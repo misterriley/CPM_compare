@@ -74,9 +74,9 @@ def get_masker(x_, y_):
     return CPMMasker(x_, y_)
 
 
-def run_one_cpm(shared_objects, alpha, desc_):
-    fold_masker_arr_, fold_y_arr_, x_, y_, num_peeps_ = shared_objects
-    y_pred = []
+def run_one_cpm(shared_objects_, alpha, desc_):
+    fold_masker_arr_, fold_y_arr_, x_, y_, num_peeps_ = shared_objects_
+    y_pred = np.ndarray(shape=(len(y_),), dtype=np.float32)
     for i in range(num_peeps_):
         fold_masker = fold_masker_arr_[i].clone()
         fold_x_masked = fold_masker.get_x(alpha, desc_)
@@ -84,7 +84,7 @@ def run_one_cpm(shared_objects, alpha, desc_):
         model = LinearRegression()
         model.fit(fold_x_masked, fold_y.reshape(-1, 1))
         pred_x = fold_masker.get_x(alpha, desc_, x_[i].reshape(1, -1))
-        y_pred.append(model.predict(pred_x)[0])
+        y_pred[i] = model.predict(pred_x)[0]
     rho = stats.spearmanr(y_, y_pred)[0]
     print(f"alpha = {alpha:.10f}: desc = {desc_}: rho = {rho:.4f}")
     return alpha, rho
@@ -130,8 +130,8 @@ if __name__ == '__main__':
                 cpm_results = pool.map(run_one_cpm, zip(alphas, [desc] * len(alphas)))
 
                 data_df = pd.DataFrame(cpm_results, columns=["alpha", "rho"])
-                data_df["log alpha"] = np.log(data_df["alpha"])
-                data_df = data_df[data_df["rho"] > 0] # don't care about negative rho
+                data_df["log alpha"] = np.log10(data_df["alpha"])
+                data_df = data_df[data_df["rho"] > 0]  # don't care about negative rho
 
                 sns.lineplot(x="alpha", y="rho", data=data_df, label=desc)
                 plt.savefig(f"{desc}_cv_plot.png")
@@ -142,4 +142,3 @@ if __name__ == '__main__':
                 plt.savefig(f"{desc}_cv_plot_log.png")
                 plt.show(block=False)
                 plt.close()
-
