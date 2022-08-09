@@ -5,8 +5,8 @@ import scipy.stats as stats
 import os
 import numpy as np
 from mpire import WorkerPool
-from sklearn.linear_model import LinearRegression, Lasso
-from sklearn.model_selection import cross_val_score, KFold
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import KFold
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -18,7 +18,6 @@ N_FOLDS = 5  # if None, leave-out-out CV is used with no randomization
 N_REPEATS = 100
 RANDOMIZE_DATA = True
 N_JOBS = 5
-RUN_COMPARISON = False
 N_ALPHAS = 201
 DESCS = ["negative", "positive", "all"]
 
@@ -69,18 +68,6 @@ class CPMMasker:
             n_params = n_pos + n_neg
 
         return ret, n_params
-
-
-def run_lasso_comparison(x_, y_, cv=5, n_jobs_=-1):
-    x_normed = (x_ - np.mean(x_, axis=0)) / np.std(x_, axis=0)
-
-    for i in np.logspace(-3.5, -1.5, num=101, base=10):
-        model = Lasso(alpha=i)
-        scores = cross_val_score(model, x_normed, y_, cv=cv, n_jobs=n_jobs_)
-        print(f"alpha = {i:.4f}: {scores.mean():.4f}")
-        model.fit(x_normed, y_)
-        non_zero_betas = np.count_nonzero(model.coef_)
-        print(f"non_zero_betas = {non_zero_betas}")
 
 
 def get_masker(fold_index, shared_objects_):
@@ -170,9 +157,6 @@ if __name__ == '__main__':
         utix = np.triu_indices(num_nodes, k=1)
         x = x[utix[0], utix[1], :].transpose()
 
-        if RUN_COMPARISON:
-            run_lasso_comparison(x, y, cv=len(y))
-
         job_count = N_JOBS if N_JOBS is not None else multiprocessing.cpu_count()
         folds = N_FOLDS if N_FOLDS is not None else num_peeps
         alphas = np.logspace(0, -6, num=N_ALPHAS, base=10)
@@ -180,7 +164,7 @@ if __name__ == '__main__':
         data_dfs = [pd.DataFrame(columns=["alpha", "rho", "n_params"]) for _ in range(len(DESCS))]
         with WorkerPool(n_jobs=job_count, enable_insights=True) as pool:
             for repeat_idx in range(N_REPEATS):
-                print(f"Repeat {repeat_idx+1}/{N_REPEATS}")
+                print(f"Repeat {repeat_idx + 1}/{N_REPEATS}")
                 kf = KFold(n_splits=folds, shuffle=RANDOMIZE_DATA)
                 shared_objects = {"x": x, "y": y, "kf": [f for f in kf.split(x)]}
 
@@ -205,4 +189,4 @@ if __name__ == '__main__':
             grouped_data = data_dfs[desc_index]
             grouped_data = grouped_data[grouped_data["rho"] > 0].groupby(by=["alpha"])  # don't care about negative rho
             for log_x, log_y in ((True, True), (True, False), (False, True), (False, False)):
-                display_data(grouped_data.mean(), log_x, log_y)
+                display_data(grouped_data.mean(), log_x, log_y, folds, N_REPEATS)
