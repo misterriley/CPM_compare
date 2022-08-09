@@ -134,7 +134,8 @@ def display_data(data_df_, log_x_, log_y_, folds_, repeats):
         ax.set_yscale("log")
         ax2.set_yscale("log")
 
-    save_file_name = f"{desc}_{folds_}fold_{repeats}_repeats_{'_logx' if log_x_ else ''}{'_logy' if log_y_ else ''}.png"
+    save_file_name = f"{desc}_{folds_}fold_{repeats}_repeats_" \
+                     f"{'_logx' if log_x_ else ''}{'_logy' if log_y_ else ''}.png"
 
     plt.savefig(save_file_name)
     plt.close()
@@ -169,7 +170,8 @@ if __name__ == '__main__':
                 shared_objects = {"x": x, "y": y, "kf": [f for f in kf.split(x)]}
 
                 shared_objects["fold_masker_arr"] = pool.map(get_masker,
-                                                             zip(range(folds), [shared_objects for _ in range(folds)]),
+                                                             zip(range(folds),
+                                                                 [shared_objects for _ in range(folds)]),
                                                              chunk_size=folds / job_count)
 
                 for desc_index in range(len(DESCS)):
@@ -186,7 +188,6 @@ if __name__ == '__main__':
                 print_efficiency(pool.get_insights(), job_count)
 
         for desc_index in range(len(DESCS)):
-            grouped_data = data_dfs[desc_index]
-            grouped_data = grouped_data[grouped_data["rho"] > 0].groupby(by=["alpha"])  # don't care about negative rho
+            grouped_data = data_dfs[desc_index].groupby(by=["alpha"])
             for log_x, log_y in ((True, True), (True, False), (False, True), (False, False)):
                 display_data(grouped_data.mean(), log_x, log_y, folds, N_REPEATS)
