@@ -99,7 +99,7 @@ def run_one_cpm(alpha, kf_, fold_masker_arr_, desc_, x_, y_, repeat_index_):
         y_pred[test_indices] = model.predict(test_x)
         total_params += n_params
 
-    print(f"\t{desc_} alpha {alpha:.6f} repeat {repeat_index_} finished")
+    print(f"\t{desc_} alpha {alpha:.6f} repeat {repeat_index_ + 1} finished")
     rho = stats.spearmanr(y_, y_pred)[0]
     avg_params = total_params / len(kf_)
     return alpha, rho, avg_params
