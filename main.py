@@ -1,3 +1,5 @@
+import copy
+import math
 import multiprocessing
 
 import scipy.io as sio
@@ -10,16 +12,20 @@ from sklearn.model_selection import KFold
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from copy import deepcopy
 
 # MAT_FILES_PATH = "G:/.shortcut-targets-by-id/1Y42MQjJzdev5CtNSh2pJh51BAqOrZiVX/IMAGEN/CPM_mat/"
-MAT_FILES_PATH = "G:/My Drive/CPM_test_data"
+# MAT_FILES_PATH = "G:/My Drive/CPM_test_data"
+MAT_FILES_PATH = ["G:/.shortcut-targets-by-id/1P67X2oPl5kWND4p5dhdn9RbtEZcHaiZ9/Data CPM 2460 Accuracy Interference",
+                  "rest_estroop_acc_interf_2460_cpm_ready.mat"]
 COLLAPSE_VECTORS = True
 N_FOLDS = 5  # if None, leave-out-out CV is used with no randomization
-N_REPEATS = 100
+N_REPEATS = 20
 RANDOMIZE_DATA = True
-N_JOBS = 5
-N_ALPHAS = 201
+N_JOBS = 7  # multiprocessing.cpu_count() - 2
+N_ALPHAS = 61
 DESCS = ["negative", "positive", "all"]
+SCATTER_ALPHAS = [0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001]
 
 
 class CPMMasker:
@@ -70,29 +76,20 @@ class CPMMasker:
         return ret, n_params
 
 
-def get_masker(fold_index, shared_objects_):
-    kf_ = shared_objects_["kf"]
-    x_ = shared_objects_["x"]
-    y_ = shared_objects_["y"]
-
+def get_masker(fold_index, x_, y_, kf_):
     train_indices = kf_[fold_index][0]
     x_train, y_train = x_[train_indices], y_[train_indices]
     return CPMMasker(x_train, y_train)
 
 
-def run_one_cpm(alpha, shared_objects_):
-    kf_ = shared_objects_["kf"]
-    fold_masker_arr_ = shared_objects_["fold_masker_arr"]
-    desc_ = shared_objects_["desc"]
-    y_ = shared_objects_["y"]
-    x_ = shared_objects_["x"]
+def run_one_cpm(alpha, kf_, fold_masker_arr_, desc_, x_, y_):
     y_pred = np.zeros(y_.shape)
     total_params = 0
     for i in range(len(kf_)):
         train_indices = kf_[i][0]
         test_indices = kf_[i][1]
 
-        fold_masker = fold_masker_arr_[i].clone()
+        fold_masker = fold_masker_arr_[i]
         train_x_masked, n_params = fold_masker.get_x(alpha, desc_)
         train_y = y_[train_indices]
         model = LinearRegression()
@@ -102,7 +99,6 @@ def run_one_cpm(alpha, shared_objects_):
         total_params += n_params
     rho = stats.spearmanr(y_, y_pred)[0]
     avg_params = total_params / len(kf_)
-    # print(f"alpha = {alpha:.8f}: desc = {desc_}: rho = {rho:.4f}: n_params = {avg_params:.4f}")
     return alpha, rho, avg_params
 
 
@@ -110,7 +106,7 @@ def print_efficiency(insights_, n_jobs_):
     print(f"threads: {n_jobs_}, efficiency: {insights_['working_ratio'] * n_jobs_:.2f}")
 
 
-def display_data(data_df_, log_x_, log_y_, folds_, repeats):
+def display_data(data_df_, log_x_, log_y_, folds_, repeats, desc_, source):
     ax = sns.lineplot(x="alpha",
                       y="rho",
                       data=data_df_,
@@ -125,7 +121,7 @@ def display_data(data_df_, log_x_, log_y_, folds_, repeats):
                  legend=False,
                  color="red")
     ax.figure.legend()
-    plt.title(desc)
+    plt.title(desc_)
 
     if log_x_:
         ax.set_xscale("log")
@@ -134,60 +130,87 @@ def display_data(data_df_, log_x_, log_y_, folds_, repeats):
         ax.set_yscale("log")
         ax2.set_yscale("log")
 
-    save_file_name = f"{desc}_{folds_}fold_{repeats}_repeats_" \
+    save_file_name = f"{source}_{desc_}_{folds_}fold_{repeats}_repeats" \
                      f"{'_logx' if log_x_ else ''}{'_logy' if log_y_ else ''}.png"
 
     plt.savefig(save_file_name)
     plt.close()
 
 
+def do_one_repeat(shared_objects_, repeat_idx_):
+    x_, y_, folds_, alphas_ = shared_objects_
+    print(f"Started repeat  {repeat_idx_ + 1}/{N_REPEATS}")
+    kf = KFold(n_splits=folds_, shuffle=RANDOMIZE_DATA)
+    kf = [f for f in kf.split(x_)]
+    fold_masker_arr = [get_masker(i, x_, y_, kf) for i in range(folds_)]
+
+    data_dfs_ = [None] * len(DESCS)
+    for desc_index_ in range(len(DESCS)):
+        cpm_results = [run_one_cpm(alpha, kf, fold_masker_arr, DESCS[desc_index_], x_, y_) for alpha in alphas_]
+        cpm_df = pd.DataFrame(cpm_results, columns=["alpha", "rho", "n_params"])
+        data_dfs_[desc_index_] = pd.concat([data_dfs_[desc_index_], cpm_df])
+
+    print(f"Finished repeat {repeat_idx_ + 1}/{N_REPEATS}")
+    return data_dfs_
+
+
+def load_data():
+    print(f"Loading {MAT_FILES_PATH[1]}")
+    mat_file = sio.loadmat(os.path.join(MAT_FILES_PATH[0], MAT_FILES_PATH[1]))
+
+    if MAT_FILES_PATH[0] == "G:/My Drive/CPM_test_data":
+        y_ = pd.read_csv(os.path.join(MAT_FILES_PATH[0], "txnegop.txt"), sep="\t", header=None)
+        y_ = y_.values.reshape(-1)
+        x_ = mat_file["stp_all"]
+    else:
+        y_ = mat_file["y"].reshape(-1)
+        x_ = mat_file["x"]
+
+    return x_, y_
+
+
 if __name__ == '__main__':
-    for file in os.listdir(MAT_FILES_PATH):
-        if not file.endswith(".mat"):
-            continue
+    i = 0
+    thread_counts = []
+    last_thread_count = None
+    while True:
+        i += 1
+        thread_count = int(math.ceil(N_REPEATS/i))
+        if thread_count <= multiprocessing.cpu_count():
+            if last_thread_count is None or last_thread_count - thread_count > 1:
+                thread_counts.append(str(thread_count))
+                last_thread_count = thread_count
+            else:
+                break
 
-        print(f"Loading {file}")
-        mat_file = sio.loadmat(os.path.join(MAT_FILES_PATH, file))
+    print(f"recommended values for N_JOBS: {', '.join(thread_counts)}, or fewer")
 
-        y = pd.read_csv(os.path.join(MAT_FILES_PATH, "txnegop.txt"), sep="\t", header=None)
-        y = y.values.reshape(-1)
+    x, y = load_data()
 
-        x = mat_file["stp_all"]
-        num_peeps = x.shape[2]
-        num_nodes = x.shape[1]
-        utix = np.triu_indices(num_nodes, k=1)
-        x = x[utix[0], utix[1], :].transpose()
+    num_peeps = x.shape[2]
+    num_nodes = x.shape[1]
+    utix = np.triu_indices(num_nodes, k=1)
+    x = x[utix[0], utix[1], :].transpose()
 
-        job_count = N_JOBS if N_JOBS is not None else multiprocessing.cpu_count()
-        folds = N_FOLDS if N_FOLDS is not None else num_peeps
-        alphas = np.logspace(0, -6, num=N_ALPHAS, base=10)
+    job_count = N_JOBS if N_JOBS is not None else multiprocessing.cpu_count()
+    folds = N_FOLDS if N_FOLDS is not None else num_peeps
+    alphas = np.logspace(0, -6, num=N_ALPHAS, base=10)
 
-        data_dfs = [pd.DataFrame(columns=["alpha", "rho", "n_params"]) for _ in range(len(DESCS))]
-        with WorkerPool(n_jobs=job_count, enable_insights=True) as pool:
-            for repeat_idx in range(N_REPEATS):
-                print(f"Repeat {repeat_idx + 1}/{N_REPEATS}")
-                kf = KFold(n_splits=folds, shuffle=RANDOMIZE_DATA)
-                shared_objects = {"x": x, "y": y, "kf": [f for f in kf.split(x)]}
+    shared_objects = (x, y, folds, alphas)
 
-                shared_objects["fold_masker_arr"] = pool.map(get_masker,
-                                                             zip(range(folds),
-                                                                 [shared_objects for _ in range(folds)]),
-                                                             chunk_size=folds / job_count)
+    with WorkerPool(n_jobs=job_count, enable_insights=True, shared_objects=shared_objects) as pool:
+        repeats_data = pool.map(do_one_repeat, range(N_REPEATS))
+        print_efficiency(pool.get_insights(), job_count)
 
-                for desc_index in range(len(DESCS)):
-                    desc = DESCS[desc_index]
-                    print(f"{desc}")
-                    shared_objects["desc"] = desc
-                    cpm_results = pool.map(run_one_cpm,
-                                           zip(alphas, [shared_objects for i in alphas]),
-                                           chunk_size=int(len(alphas) / job_count))
-
-                    cpm_df = pd.DataFrame(cpm_results, columns=["alpha", "rho", "n_params"])
-                    data_dfs[desc_index] = pd.concat([data_dfs[desc_index], cpm_df])
-
-                print_efficiency(pool.get_insights(), job_count)
-
-        for desc_index in range(len(DESCS)):
-            grouped_data = data_dfs[desc_index].groupby(by=["alpha"])
-            for log_x, log_y in ((True, True), (True, False), (False, True), (False, False)):
-                display_data(grouped_data.mean(), log_x, log_y, folds, N_REPEATS)
+    for desc_index in range(len(DESCS)):
+        grouped_data = pd.concat([repeats_data[i][desc_index] for i in range(len(repeats_data))],
+                                 ignore_index=True)
+        grouped_data = grouped_data.groupby(by=["alpha"]).mean()
+        for log_x, log_y in ((True, True), (True, False), (False, True), (False, False)):
+            display_data(grouped_data,
+                         log_x,
+                         log_y,
+                         folds,
+                         N_REPEATS,
+                         DESCS[desc_index],
+                         MAT_FILES_PATH[1].replace(".mat", ""))
