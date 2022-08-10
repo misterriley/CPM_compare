@@ -1,4 +1,4 @@
-import copy
+
 import math
 import multiprocessing
 
@@ -12,7 +12,6 @@ from sklearn.model_selection import KFold
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from copy import deepcopy
 
 # MAT_FILES_PATH = "G:/.shortcut-targets-by-id/1Y42MQjJzdev5CtNSh2pJh51BAqOrZiVX/IMAGEN/CPM_mat/"
 # MAT_FILES_PATH = "G:/My Drive/CPM_test_data"
@@ -70,7 +69,7 @@ class CPMMasker:
             if COLLAPSE_VECTORS:
                 ret = pos_masked - neg_masked
             else:
-                ret = x_[:, [pos_mask[i] or neg_mask[i] for i in range(len(self.corrs))]]
+                ret = x_[:, [pos_mask[j] or neg_mask[j] for j in range(len(self.corrs))]]
             n_params = n_pos + n_neg
 
         return ret, n_params
@@ -82,21 +81,25 @@ def get_masker(fold_index, x_, y_, kf_):
     return CPMMasker(x_train, y_train)
 
 
-def run_one_cpm(alpha, kf_, fold_masker_arr_, desc_, x_, y_):
+def run_one_cpm(alpha, kf_, fold_masker_arr_, desc_, x_, y_, repeat_index_):
     y_pred = np.zeros(y_.shape)
     total_params = 0
-    for i in range(len(kf_)):
-        train_indices = kf_[i][0]
-        test_indices = kf_[i][1]
+    for j in range(len(kf_)):
+        train_indices = kf_[j][0]
+        test_indices = kf_[j][1]
 
-        fold_masker = fold_masker_arr_[i]
+        fold_masker = fold_masker_arr_[j]
         train_x_masked, n_params = fold_masker.get_x(alpha, desc_)
         train_y = y_[train_indices]
+
         model = LinearRegression()
         model.fit(train_x_masked, train_y)
+
         test_x, n_params = fold_masker.get_x(alpha, desc_, x_[test_indices])
         y_pred[test_indices] = model.predict(test_x)
         total_params += n_params
+
+    print(f"\t{desc_} alpha {alpha:.6f} repeat {repeat_index_} finished")
     rho = stats.spearmanr(y_, y_pred)[0]
     avg_params = total_params / len(kf_)
     return alpha, rho, avg_params
@@ -139,14 +142,15 @@ def display_data(data_df_, log_x_, log_y_, folds_, repeats, desc_, source):
 
 def do_one_repeat(shared_objects_, repeat_idx_):
     x_, y_, folds_, alphas_ = shared_objects_
-    print(f"Started repeat  {repeat_idx_ + 1}/{N_REPEATS}")
+    print(f"Started repeat {repeat_idx_ + 1}/{N_REPEATS}")
     kf = KFold(n_splits=folds_, shuffle=RANDOMIZE_DATA)
     kf = [f for f in kf.split(x_)]
-    fold_masker_arr = [get_masker(i, x_, y_, kf) for i in range(folds_)]
+    fold_masker_arr = [get_masker(j, x_, y_, kf) for j in range(folds_)]
 
     data_dfs_ = [None] * len(DESCS)
     for desc_index_ in range(len(DESCS)):
-        cpm_results = [run_one_cpm(alpha, kf, fold_masker_arr, DESCS[desc_index_], x_, y_) for alpha in alphas_]
+        cpm_results = [run_one_cpm(alpha, kf, fold_masker_arr, DESCS[desc_index_], x_, y_, repeat_idx_)
+                       for alpha in alphas_]
         cpm_df = pd.DataFrame(cpm_results, columns=["alpha", "rho", "n_params"])
         data_dfs_[desc_index_] = pd.concat([data_dfs_[desc_index_], cpm_df])
 
