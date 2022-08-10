@@ -136,7 +136,7 @@ def display_data(data_df_, log_x_, log_y_, folds_, repeats, desc_, source):
     save_file_name = f"{source}_{desc_}_{folds_}fold_{repeats}_repeats" \
                      f"{'_logx' if log_x_ else ''}{'_logy' if log_y_ else ''}.png"
 
-    plt.savefig(save_file_name)
+    plt.savefig(save_file_name, bbox_inches="tight")
     plt.close()
 
 
