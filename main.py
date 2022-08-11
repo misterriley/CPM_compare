@@ -12,35 +12,13 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-MAT_FILES_DICT = {"sadie-marie": {"path": "G:/.shortcut-targets-by-id/1P67X2oPl5kWND4p5dhdn9RbtEZcHaiZ9"
-                                          "/Data CPM 2460 Accuracy Interference",
-                                  "file": "rest_estroop_acc_interf_2460_cpm_ready.mat",
-                                  "y_in_mat_file": True,
-                                  "x_col": "x",
-                                  "y_col": "y"
-                                  },
-                  "test_data": {"path": "G:/My Drive/CPM_test_data",
-                                "file": "stp_all_clean2.mat",
-                                "y_in_mat_file": False,
-                                "x_col": "stp_all",
-                                "y_file": "txnegop.txt"
-                                },
-                  "IMAGEN": {"path": "G:/.shortcut-targets-by-id/1Nj5b1RhD0TcXoswrxiV5gkSPPq4fnGfu/"
-                                     "IMAGEN_master_data/Matrices_Qinghao_new/matrices",
-                             "file": ["mats_mid_bsl.mat"],
-                             "y_in_mat_file": True,
-                             "x_col": ["mats_mid_bsl.mat"],
-                             "y_col": "y"
-                             }
-                  }
+from data_loader import DataLoader
 
-MAT_FILES_PATH = ["G:/.shortcut-targets-by-id/1P67X2oPl5kWND4p5dhdn9RbtEZcHaiZ9/Data CPM 2460 Accuracy Interference",
-                  "rest_estroop_acc_interf_2460_cpm_ready.mat"]
 COLLAPSE_VECTORS = True
 N_FOLDS = 5  # if None, leave-out-out CV is used with no randomization
 N_REPEATS = 20
 RANDOMIZE_DATA = True
-N_JOBS = 7  # multiprocessing.cpu_count() - 2
+N_JOBS = 3
 N_ALPHAS = 61
 DESCS = ["negative", "positive", "all"]
 SCATTER_ALPHAS = [0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001]
@@ -177,63 +155,57 @@ def do_one_repeat(shared_objects_, repeat_idx_):
     return data_dfs_
 
 
-def load_data():
-    print(f"Loading {MAT_FILES_PATH[1]}")
-    mat_file = sio.loadmat(os.path.join(MAT_FILES_PATH[0], MAT_FILES_PATH[1]))
+def print_recommended_thread_counts():
+    thread_counts = set([int(math.ceil(N_REPEATS / i)) for i in range(1, N_REPEATS + 1)])
+    thread_counts = [str(i) for i in sorted(thread_counts, reverse=True) if i <= multiprocessing.cpu_count()]
 
-    if MAT_FILES_PATH[0] == "G:/My Drive/CPM_test_data":
-        y_ = pd.read_csv(os.path.join(MAT_FILES_PATH[0], "txnegop.txt"), sep="\t", header=None)
-        y_ = y_.values.reshape(-1)
-        x_ = mat_file["stp_all"]
-    else:
-        y_ = mat_file["y"].reshape(-1)
-        x_ = mat_file["x"]
-
-    return x_, y_
+    print(f"recommended values for N_JOBS: {', '.join(sorted(thread_counts))}")
 
 
 if __name__ == '__main__':
-    i = 0
-    thread_counts = []
-    last_thread_count = None
-    while True:
-        i += 1
-        thread_count = int(math.ceil(N_REPEATS / i))
-        if thread_count <= multiprocessing.cpu_count():
-            if last_thread_count is None or last_thread_count - thread_count > 1:
-                thread_counts.append(str(thread_count))
-                last_thread_count = thread_count
-            else:
-                break
+    print_recommended_thread_counts()
 
-    print(f"recommended values for N_JOBS: {', '.join(thread_counts)}, or fewer")
+    dl = DataLoader(protocol_c="IMAGEN",
+                    file_c="mats_sst_fu2.mat",
+                    y_col_c="surps_c_sensation_seeking_average_fu2")
 
-    x, y = load_data()
+    for data_set in dl.get_data_sets():
+        x = data_set.get_x()
+        y = data_set.get_y()
+        descriptor = data_set.get_descriptor()
 
-    num_peeps = x.shape[2]
-    num_nodes = x.shape[1]
-    utix = np.triu_indices(num_nodes, k=1)
-    x = x[utix[0], utix[1], :].transpose()
+        bad_x = [np.isnan(x[:, :, i]).any() for i in range(y.shape[0])]
+        bad_y = np.isnan(y)
+        good_indices = np.where(~np.logical_or(bad_x, bad_y))[0]
+        x = x[:, :, good_indices]
+        y = y[good_indices]
 
-    job_count = N_JOBS if N_JOBS is not None else multiprocessing.cpu_count()
-    folds = N_FOLDS if N_FOLDS is not None else num_peeps
-    alphas = np.logspace(0, -6, num=N_ALPHAS, base=10)
+        num_peeps = x.shape[2]
+        num_nodes = x.shape[1]
 
-    shared_objects = (x, y, folds, alphas)
+        # x is symmetric - cut out the upper triangle
+        utix = np.triu_indices(num_nodes, k=1)
+        x = x[utix[0], utix[1], :].transpose()
 
-    with WorkerPool(n_jobs=job_count, enable_insights=True, shared_objects=shared_objects) as pool:
-        repeats_data = pool.map(do_one_repeat, range(N_REPEATS))
-        print_efficiency(pool.get_insights(), job_count)
+        job_count = N_JOBS if N_JOBS is not None else multiprocessing.cpu_count()
+        folds = N_FOLDS if N_FOLDS is not None else num_peeps
+        alphas = np.logspace(0, -6, num=N_ALPHAS, base=10)
 
-    for desc_index in range(len(DESCS)):
-        grouped_data = pd.concat([repeats_data[i][desc_index] for i in range(len(repeats_data))],
-                                 ignore_index=True)
-        grouped_data = grouped_data.groupby(by=["alpha"]).mean()
-        for log_x, log_y in ((True, True), (True, False), (False, True), (False, False)):
-            display_data(grouped_data,
-                         log_x,
-                         log_y,
-                         folds,
-                         N_REPEATS,
-                         DESCS[desc_index],
-                         MAT_FILES_PATH[1].replace(".mat", ""))
+        shared_objects = (x, y, folds, alphas)
+
+        with WorkerPool(n_jobs=job_count, enable_insights=True, shared_objects=shared_objects) as pool:
+            repeats_data = pool.map(do_one_repeat, range(N_REPEATS))
+            print_efficiency(pool.get_insights(), job_count)
+
+        for desc_index in range(len(DESCS)):
+            grouped_data = pd.concat([repeats_data[i][desc_index] for i in range(len(repeats_data))],
+                                     ignore_index=True)
+            grouped_data = grouped_data.groupby(by=["alpha"]).mean()
+            for log_x, log_y in ((True, True), (True, False), (False, True), (False, False)):
+                display_data(grouped_data,
+                             log_x,
+                             log_y,
+                             folds,
+                             N_REPEATS,
+                             DESCS[desc_index],
+                             descriptor)
