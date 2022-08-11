@@ -1,9 +1,7 @@
 import math
 import multiprocessing
 
-import scipy.io as sio
 import scipy.stats as stats
-import os
 import numpy as np
 from mpire import WorkerPool
 from sklearn.linear_model import LinearRegression
@@ -166,8 +164,8 @@ if __name__ == '__main__':
     print_recommended_thread_counts()
 
     dl = DataLoader(protocol_c="IMAGEN",
-                    file_c="mats_sst_fu2.mat",
-                    y_col_c="surps_c_sensation_seeking_average_fu2")
+                    file_c="mats_mid_bsl.mat",
+                    y_col_c="kirby_c_estimated_k_all_trials_fu2")
 
     for data_set in dl.get_data_sets():
         x = data_set.get_x()
