@@ -1,4 +1,3 @@
-
 import math
 import multiprocessing
 
@@ -13,8 +12,28 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-# MAT_FILES_PATH = "G:/.shortcut-targets-by-id/1Y42MQjJzdev5CtNSh2pJh51BAqOrZiVX/IMAGEN/CPM_mat/"
-# MAT_FILES_PATH = "G:/My Drive/CPM_test_data"
+MAT_FILES_DICT = {"sadie-marie": {"path": "G:/.shortcut-targets-by-id/1P67X2oPl5kWND4p5dhdn9RbtEZcHaiZ9"
+                                          "/Data CPM 2460 Accuracy Interference",
+                                  "file": "rest_estroop_acc_interf_2460_cpm_ready.mat",
+                                  "y_in_mat_file": True,
+                                  "x_col": "x",
+                                  "y_col": "y"
+                                  },
+                  "test_data": {"path": "G:/My Drive/CPM_test_data",
+                                "file": "stp_all_clean2.mat",
+                                "y_in_mat_file": False,
+                                "x_col": "stp_all",
+                                "y_file": "txnegop.txt"
+                                },
+                  "IMAGEN": {"path": "G:/.shortcut-targets-by-id/1Nj5b1RhD0TcXoswrxiV5gkSPPq4fnGfu/"
+                                     "IMAGEN_master_data/Matrices_Qinghao_new/matrices",
+                             "file": ["mats_mid_bsl.mat"],
+                             "y_in_mat_file": True,
+                             "x_col": ["mats_mid_bsl.mat"],
+                             "y_col": "y"
+                             }
+                  }
+
 MAT_FILES_PATH = ["G:/.shortcut-targets-by-id/1P67X2oPl5kWND4p5dhdn9RbtEZcHaiZ9/Data CPM 2460 Accuracy Interference",
                   "rest_estroop_acc_interf_2460_cpm_ready.mat"]
 COLLAPSE_VECTORS = True
@@ -179,7 +198,7 @@ if __name__ == '__main__':
     last_thread_count = None
     while True:
         i += 1
-        thread_count = int(math.ceil(N_REPEATS/i))
+        thread_count = int(math.ceil(N_REPEATS / i))
         if thread_count <= multiprocessing.cpu_count():
             if last_thread_count is None or last_thread_count - thread_count > 1:
                 thread_counts.append(str(thread_count))
