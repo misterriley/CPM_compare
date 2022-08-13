@@ -1,6 +1,7 @@
 import os
 
 import mat73
+import numpy as np
 import pandas as pd
 import scipy.io as sio
 
@@ -71,6 +72,7 @@ class DataSet:
             self.y = y.values
         else:
             self.y = y
+        self.y = self.y.reshape(-1)
 
         self.descriptor = descriptor
 
@@ -91,6 +93,7 @@ def load_txt(file, delimiter=","):
 
 
 def load_mat(file):
+    print("Loading {}".format(file))
     try:
         return sio.loadmat(file)
     except NotImplementedError:
@@ -179,7 +182,7 @@ class DataLoader:
                 raise ValueError("x_col is None and data is None")
             x_col_m = data["x_col"]
         y_col_m = MAT_FILES_DICT[protocol].get("y_col")
-        y_file_m = MAT_FILES_DICT[protocol].get("y_file")
+        y_file_m: str = MAT_FILES_DICT[protocol].get("y_file")
         mat = load_mat(os.path.join(path_m, file))
         x = mat[x_col_m]
         if y_in_mat_file_m:
@@ -188,7 +191,7 @@ class DataLoader:
             y = load_txt(y_file_m, delimiter="\t")
             self.build_data_set(x, y)
         elif y_file_m.endswith(".xlsx"):
-            y = pd.read_excel(y_file_m)
+            y = pd.read_excel(io=y_file_m, dtype=np.float32)
             self.add_y_col_from_mat(y_col_m, x, y)
         else:
             mat = load_mat(y_file_m)

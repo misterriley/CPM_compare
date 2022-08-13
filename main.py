@@ -1,5 +1,6 @@
 import math
 import multiprocessing
+import os
 
 import scipy.stats as stats
 import numpy as np
@@ -16,10 +17,10 @@ COLLAPSE_VECTORS = True
 N_FOLDS = 5  # if None, leave-out-out CV is used with no randomization
 N_REPEATS = 20
 RANDOMIZE_DATA = True
-N_JOBS = 3
+N_JOBS = 10
 N_ALPHAS = 61
 DESCS = ["negative", "positive", "all"]
-SCATTER_ALPHAS = [0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001]
+GUARANTEED_ALPHAS = [0.1, 0.05, 0.01, 0.005, 0.001]
 
 
 class CPMMasker:
@@ -76,7 +77,7 @@ def get_masker(fold_index, x_, y_, kf_):
     return CPMMasker(x_train, y_train)
 
 
-def run_one_cpm(alpha, kf_, fold_masker_arr_, desc_, x_, y_, repeat_index_):
+def run_one_cpm(alpha_, kf_, fold_masker_arr_, desc_, x_, y_, repeat_index_):
     y_pred = np.zeros(y_.shape)
     total_params = 0
     for j in range(len(kf_)):
@@ -84,27 +85,27 @@ def run_one_cpm(alpha, kf_, fold_masker_arr_, desc_, x_, y_, repeat_index_):
         test_indices = kf_[j][1]
 
         fold_masker = fold_masker_arr_[j]
-        train_x_masked, n_params = fold_masker.get_x(alpha, desc_)
+        train_x_masked, n_params = fold_masker.get_x(alpha_, desc_)
         train_y = y_[train_indices]
 
         model = LinearRegression()
         model.fit(train_x_masked, train_y)
 
-        test_x, n_params = fold_masker.get_x(alpha, desc_, x_[test_indices])
+        test_x, n_params = fold_masker.get_x(alpha_, desc_, x_[test_indices])
         y_pred[test_indices] = model.predict(test_x)
         total_params += n_params
 
-    print(f"\t{desc_} alpha {alpha:.6f} repeat {repeat_index_ + 1} finished")
+    print(f"\t{desc_} alpha {alpha_:.6f} repeat {repeat_index_ + 1} finished")
     rho = stats.spearmanr(y_, y_pred)[0]
     avg_params = total_params / len(kf_)
-    return alpha, rho, avg_params
+    return alpha_, rho, avg_params
 
 
 def print_efficiency(insights_, n_jobs_):
     print(f"threads: {n_jobs_}, efficiency: {insights_['working_ratio'] * n_jobs_:.2f}")
 
 
-def display_data(data_df_, log_x_, log_y_, folds_, repeats, desc_, source):
+def save_data(data_df_, folds_, repeats, desc_, source):
     ax = sns.lineplot(x="alpha",
                       y="rho",
                       data=data_df_,
@@ -119,20 +120,23 @@ def display_data(data_df_, log_x_, log_y_, folds_, repeats, desc_, source):
                  legend=False,
                  color="red")
     ax.figure.legend()
-    plt.title(desc_)
+    plt.title(source + " " + desc_)
 
-    if log_x_:
-        ax.set_xscale("log")
-        ax2.set_xscale("log")
-    if log_y_:
-        ax.set_yscale("log")
-        ax2.set_yscale("log")
+    ax.set_xscale("log")
+    ax2.set_xscale("log")
+    # ax.set_yscale("log")
+    ax2.set_yscale("log")
 
-    save_file_name = f"{source}_{desc_}_{folds_}fold_{repeats}_repeats" \
-                     f"{'_logx' if log_x_ else ''}{'_logy' if log_y_ else ''}.png"
+    save_file_name = f"{source}_{desc_}_{folds_}fold_{repeats}_repeats.png"
 
-    plt.savefig(save_file_name, bbox_inches="tight")
+    save_file_dir = f"./outputs/{source}/"
+    if not os.path.exists(save_file_dir):
+        os.makedirs(save_file_dir)
+    plt.savefig(os.path.join(save_file_dir, save_file_name), bbox_inches="tight")
     plt.close()
+
+    report_file_name = f"{source}_{desc_}_{folds_}fold_{repeats}_repeats.csv"
+    data_df_.to_csv(os.path.join(save_file_dir, report_file_name))
 
 
 def do_one_repeat(shared_objects_, repeat_idx_):
@@ -144,8 +148,8 @@ def do_one_repeat(shared_objects_, repeat_idx_):
 
     data_dfs_ = [None] * len(DESCS)
     for desc_index_ in range(len(DESCS)):
-        cpm_results = [run_one_cpm(alpha, kf, fold_masker_arr, DESCS[desc_index_], x_, y_, repeat_idx_)
-                       for alpha in alphas_]
+        cpm_results = [run_one_cpm(alpha_, kf, fold_masker_arr, DESCS[desc_index_], x_, y_, repeat_idx_)
+                       for alpha_ in alphas_]
         cpm_df = pd.DataFrame(cpm_results, columns=["alpha", "rho", "n_params"])
         data_dfs_[desc_index_] = pd.concat([data_dfs_[desc_index_], cpm_df])
 
@@ -163,20 +167,40 @@ def print_recommended_thread_counts():
 if __name__ == '__main__':
     print_recommended_thread_counts()
 
-    dl = DataLoader(protocol_c="IMAGEN",
-                    file_c="mats_mid_bsl.mat",
-                    y_col_c="kirby_c_estimated_k_all_trials_fu2")
+    dl = DataLoader(
+        protocol_c=[
+            "IMAGEN",
+            # "sadie-marie",
+            # "test_data"
+        ],
+        file_c=None,  # [
+        # "mats_sst_fu2.mat",
+        # "rest_estroop_acc_interf_2460_cpm_ready.mat",
+        # "enback_estroop_acc_interf_2460_cpm_ready.mat",
+        # "stp_all_clean2.mat"
+        # ],
+        y_col_c=None)
 
     for data_set in dl.get_data_sets():
         x = data_set.get_x()
         y = data_set.get_y()
         descriptor = data_set.get_descriptor()
+        print("starting data set:", descriptor)
 
-        bad_x = [np.isnan(x[:, :, i]).any() for i in range(y.shape[0])]
-        bad_y = np.isnan(y)
-        good_indices = np.where(~np.logical_or(bad_x, bad_y))[0]
+        print("initial x shape:", x.shape)
+        print("initial y shape:", y.shape)
+
+        assert x.shape[2] == y.shape[0]
+        assert x.shape[0] == x.shape[1]
+
+        x_is_bad = [np.isnan(x[:, :, i]).any() for i in range(x.shape[2])]
+        y_is_bad = np.isnan(y)
+        good_indices = np.where(~np.logical_or(x_is_bad, y_is_bad))[0]
         x = x[:, :, good_indices]
         y = y[good_indices]
+
+        print("expurgated x shape:", x.shape)
+        print("expurgated y shape:", y.shape)
 
         num_peeps = x.shape[2]
         num_nodes = x.shape[1]
@@ -188,6 +212,10 @@ if __name__ == '__main__':
         job_count = N_JOBS if N_JOBS is not None else multiprocessing.cpu_count()
         folds = N_FOLDS if N_FOLDS is not None else num_peeps
         alphas = np.logspace(0, -6, num=N_ALPHAS, base=10)
+        for alpha in GUARANTEED_ALPHAS:
+            if alpha not in alphas:
+                alphas = np.append(alphas, alpha)
+        alphas = np.sort(alphas)
 
         shared_objects = (x, y, folds, alphas)
 
@@ -199,11 +227,9 @@ if __name__ == '__main__':
             grouped_data = pd.concat([repeats_data[i][desc_index] for i in range(len(repeats_data))],
                                      ignore_index=True)
             grouped_data = grouped_data.groupby(by=["alpha"]).mean()
-            for log_x, log_y in ((True, True), (True, False), (False, True), (False, False)):
-                display_data(grouped_data,
-                             log_x,
-                             log_y,
-                             folds,
-                             N_REPEATS,
-                             DESCS[desc_index],
-                             descriptor)
+
+            save_data(grouped_data,
+                      folds,
+                      N_REPEATS,
+                      DESCS[desc_index],
+                      descriptor)
