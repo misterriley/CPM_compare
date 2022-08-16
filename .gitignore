@@ -2,3 +2,5 @@
 /*.png
 /*.zip
 /outputs/
+__pycache__/ 
+old/ 

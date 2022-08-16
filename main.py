@@ -17,7 +17,7 @@ COLLAPSE_VECTORS = True
 N_FOLDS = 5  # if None, leave-out-out CV is used with no randomization
 N_REPEATS = 20
 RANDOMIZE_DATA = True
-N_JOBS = 10
+N_JOBS = 5
 N_ALPHAS = 61
 DESCS = ["negative", "positive", "all"]
 GUARANTEED_ALPHAS = [0.1, 0.05, 0.01, 0.005, 0.001]
@@ -169,9 +169,9 @@ if __name__ == '__main__':
 
     dl = DataLoader(
         protocol_c=[
-            "IMAGEN",
-            # "sadie-marie",
-            # "test_data"
+            # "IMAGEN",
+            "sadie-marie",
+            "test_data"
         ],
         file_c=None,  # [
         # "mats_sst_fu2.mat",
