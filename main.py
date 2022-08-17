@@ -15,11 +15,11 @@ import matplotlib.pyplot as plt
 from data_loader import DataLoader
 
 DO_NESTED_KFOLD = True
-N_OUTER_FOLDS = 2
-N_OUTER_REPEATS = 20
+N_OUTER_FOLDS = 3
+N_OUTER_REPEATS = 15
 COLLAPSE_VECTORS = True
 N_FOLDS = 5  # if None, set to leave-one-out CV
-N_REPEATS = 20
+N_REPEATS = 10
 RANDOMIZE_DATA = True
 N_JOBS = 5
 N_ALPHAS = 0
@@ -231,16 +231,17 @@ def main():
 
     dl = DataLoader(
         protocol_c=[
-            # "IMAGEN",
-            "sadie-marie",
+            "IMAGEN",
+            # "sadie-marie",
             # "test_data"
         ],
-        file_c=[
-            # "mats_sst_fu2.mat",
-            # "rest_estroop_acc_interf_2460_cpm_ready.mat",
-            "enback_estroop_acc_interf_2460_cpm_ready.mat",
-            # "stp_all_clean2.mat"
-        ],
+        file_c=None,
+        # [
+        # "mats_sst_fu2.mat",
+        # "rest_estroop_acc_interf_2460_cpm_ready.mat",
+        # "enback_estroop_acc_interf_2460_cpm_ready.mat",
+        # "stp_all_clean2.mat"
+        # ],
         y_col_c=None)
 
     for data_set in dl.get_data_sets():
