@@ -9,6 +9,34 @@ from mpire import WorkerPool
 import time
 
 
+class MuZero:
+    def __init__(self, n_components, n_features, n_classes, n_workers=1):
+        self.n_components = n_components
+        self.n_features = n_features
+        self.n_classes = n_classes
+        self.n_workers = n_workers
+        self.worker_pool = WorkerPool(n_workers)
+
+    def fit(self, X, y):
+        self.X = X
+        self.y = y
+        self.matrices = self.worker_pool.map(get_eig, [self.X for _ in range(self.n_components)])
+        self.matrices = np.array(self.matrices)
+        self.matrices = self.matrices[:, :, 1]
+        self.matrices = self.matrices.reshape(self.n_components, self.n_features, self.n_features)
+        self.matrices
+
+    def transform(self, X):
+        return self.worker_pool.map(self.transform_data, [X for _ in range(self.n_components)])
+
+    def transform_data(self, X):
+        return np.dot(X, self.matrices)
+
+    def fit_transform(self, X, y):
+        self.fit(X, y)
+        return self.transform(X)
+
+
 class AdamOptimizer:
     def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
         self.learning_rate = learning_rate
@@ -79,7 +107,7 @@ def gradient_descent(proj_, y_, matrices, tolerance=0.01, max_iter=1000):
     for step in range(max_iter):
         grad = gradient(proj_, y_, matrices)
         proj_ = adam_optimizer.update(grad, proj_)
-        if step % 10 == 0:
+        if step % 100 == 0:
             print("proj norm: {}".format(np.linalg.norm(proj_)))
             print("loss: {}".format(loss(proj_, y_, matrices)))
             print("grad norm: {}".format(np.linalg.norm(grad)))
