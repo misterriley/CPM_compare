@@ -102,7 +102,7 @@ def load_mat(file):
 
 class DataLoader:
 
-    def __init__(self, protocol_c=None, file_c=None, y_col_c=None):
+    def __init__(self, protocol_c=None, file_c=None, y_col_c=None, clean_data=False):
         self.data_sets = []
 
         self.display_protocol = None
@@ -119,6 +119,24 @@ class DataLoader:
         if isinstance(self.y_col_c, str):
             self.y_col_c = [self.y_col_c]
         self.load_data()
+
+        if clean_data:
+            self.clean_data()
+
+    def clean_data(self):
+        for data_set_ in self.data_sets:
+
+            x = data_set_.get_x()
+            y = data_set_.get_y()
+
+            assert x.shape[2] == y.shape[0]
+            assert x.shape[0] == x.shape[1]
+
+            x_is_bad = [np.isnan(x[:, :, i]).any() for i in range(x.shape[2])]
+            y_is_bad = np.isnan(y)
+            good_indices = np.where(~np.logical_or(x_is_bad, y_is_bad))[0]
+            data_set_.x = x[:, :, good_indices]
+            data_set_.y = y[good_indices]
 
     def build_data_set(self, x, y):
         descriptor = self.display_protocol + \

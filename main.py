@@ -242,28 +242,14 @@ def main():
         # "enback_estroop_acc_interf_2460_cpm_ready.mat",
         # "stp_all_clean2.mat"
         # ],
-        y_col_c=None)
+        y_col_c=None,
+        clean_data=True)
 
     for data_set in dl.get_data_sets():
         x = data_set.get_x()
         y = data_set.get_y()
         descriptor = data_set.get_descriptor()
         print("starting data set:", descriptor)
-
-        print("initial x shape:", x.shape)
-        print("initial y shape:", y.shape)
-
-        assert x.shape[2] == y.shape[0]
-        assert x.shape[0] == x.shape[1]
-
-        x_is_bad = [np.isnan(x[:, :, i]).any() for i in range(x.shape[2])]
-        y_is_bad = np.isnan(y)
-        good_indices = np.where(~np.logical_or(x_is_bad, y_is_bad))[0]
-        x = x[:, :, good_indices]
-        y = y[good_indices]
-
-        print("expurgated x shape:", x.shape)
-        print("expurgated y shape:", y.shape)
 
         num_peeps = x.shape[2]
         num_nodes = x.shape[1]
