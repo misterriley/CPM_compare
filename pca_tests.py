@@ -11,6 +11,7 @@ from mpire import WorkerPool
 from multiprocessing import Lock
 import torch
 
+
 def fisher_r_to_z(r):
     return np.arctanh(r)
 
@@ -54,6 +55,7 @@ def gradient_descent(y_, x_, ridge_c_):
 def predicted_output(proj_, x_, reg_vector_):
     return reg_vector_[1] * np.log(np.matmul(np.matmul(proj_, x_), proj_)) + reg_vector_[0]
 
+
 def job(shared_objects, k_):
     kf_split_, x_, y_, lock, ridge_c_ = shared_objects
 
@@ -72,8 +74,8 @@ def job(shared_objects, k_):
 N_JOBS = 1  # multiprocessing.cpu_count() - 2
 K_FOLDS = N_JOBS * 4
 
-if __name__ == "__main__":
 
+def torch_variance_estimation():
     dl = data_loader.DataLoader(
         protocol_c=[
             # "IMAGEN",
@@ -89,7 +91,6 @@ if __name__ == "__main__":
         # ],
         y_col_c=None,
         clean_data=True)
-
     for data_set in dl.data_sets:
         x = data_set.x
         y = data_set.y
@@ -116,3 +117,49 @@ if __name__ == "__main__":
             ridge_test_df.loc[len(ridge_test_df)] = [ridge_c, mean_squared_error(test_y, test_predictions),
                                                      np.std(test_predictions - test_y), corr[0], corr[1]]
         ridge_test_df.to_csv("{}_ridge_test_df.csv".format(data_set.descriptor))
+
+MIN_EIGEN_VALUE = 0.00001
+
+def corr_matrix_reimann_dist(a, b):
+    eigenvals, eigenvecs = np.linalg.eig(np.linalg.inv(a).dot(b))
+    return np.sqrt(np.sum(np.log(eigenvals) ** 2))
+
+def matrix_inversion_test():
+    dl = data_loader.DataLoader(
+        protocol_c=[
+            # "IMAGEN",
+            # "sadie-marie",
+            "test_data"
+        ],
+        file_c=None,
+        # [
+        # "mats_sst_fu2.mat",
+        # "rest_estroop_acc_interf_2460_cpm_ready.mat",
+        # "enback_estroop_acc_interf_2460_cpm_ready.mat",
+        # "stp_all_clean2.mat"
+        # ],
+        y_col_c=None,
+        clean_data=True)
+    for data_set in dl.data_sets:
+        x = data_set.x
+        y = data_set.y
+        x_as_r = fisher_z_to_r(x)
+        for i in range(x.shape[0]):
+            x_as_r[i, i, :] = 1  # the diagonal would be ~.99999 otherwise
+
+        for i in range(x.shape[2]):
+            a = x_as_r[:, :, i]
+            for j in range(i + 1, x.shape[2]):
+                b = x_as_r[:, :, j]
+                now = time.time()
+
+                # thanks to https://gmarti.gitlab.io/math/2019/12/25/riemannian-mean-correlation.html
+                eigenvalues, _ = np.linalg.eig(np.linalg.solve(a, b))
+                dist = np.sqrt(np.sum(np.log(eigenvalues) ** 2))
+                print("dist: {} --- time: {}".format(dist, time.time() - now))
+
+
+
+if __name__ == "__main__":
+    # torch_variance_estimation()
+    matrix_inversion_test()
