@@ -5,6 +5,21 @@ import scipy.io
 from sklearn.preprocessing import PowerTransformer, FunctionTransformer, StandardScaler
 
 
+def fisher_z_to_r(z):
+    return np.tanh(z)
+
+
+def matrix_sqrt(a):
+    svd = np.linalg.svd(a)
+    return svd[0] @ np.diag(svd[1] ** .5) @ svd[2]
+
+
+def wasserstein_distance_cov(a: np.ndarray, b: np.ndarray):
+    sqrt_b = matrix_sqrt(b)
+    m = sqrt_b @ a @ sqrt_b
+    return np.trace(a + b - 2 * matrix_sqrt(m))
+
+
 def save_run_outputs_subsample_nogrid(out_path, iter, outputs, y):
     """
     Save run outputs for subsample CPM
