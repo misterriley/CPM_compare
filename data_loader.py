@@ -9,6 +9,15 @@ import utils
 
 MAT_FILES_DICT = \
     {
+        "hcp":
+            {
+                "path": "G:\\.shortcut-targets-by-id\\1u4IH_3M8gr43oUf0uI5J8PA4r7pHEhHU\\data.515",
+                "file": "all_mats.mat",
+                "y_in_mat_file": False,
+                "x_col": "all_mats",
+                "y_col": "",
+                "y_file": "all_behav.csv",
+            },
         "sadie-marie":
             {
                 "path": "G:\\.shortcut-targets-by-id\\1P67X2oPl5kWND4p5dhdn9RbtEZcHaiZ9"

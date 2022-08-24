@@ -8,22 +8,22 @@ import numpy as np
 from mpire import WorkerPool
 import torch
 
-PATIENCE = 200
-NUM_REPETITIONS = 5
-N_JOBS = 1
+PATIENCE = 3000
+NUM_REPETITIONS = 20
+N_JOBS = 2
 K_FOLDS = 10
+N_VECTORS = 1
+LEARNING_RATE = 0.01 if N_VECTORS == 1 else 0.05
 
 
 def gradient_descent(y_, x_):
-    n_vectors = 2
-
-    proj_vectors = 2 * torch.rand(size=(x_.shape[1], n_vectors)) - 1
-    proj_vectors = proj_vectors.div(torch.norm(proj_vectors, p=2,dim=0))
-    reg_vector = 2 * torch.rand(size=(n_vectors + 1, 1)) - 1
+    proj_vectors = 2 * torch.rand(size=(x_.shape[1], N_VECTORS)) - 1
+    reg_vector = 2 * torch.rand(size=(N_VECTORS + 1, 1)) - 1
+    reg_vector[0] = y_.mean()
 
     proj_vectors.requires_grad = True
     reg_vector.requires_grad = True
-    optimizer = torch.optim.Adam([proj_vectors, reg_vector], lr=0.03)
+    optimizer = torch.optim.Adam([proj_vectors, reg_vector], lr=LEARNING_RATE)
     x_ = torch.from_numpy(x_).float()
     y_ = torch.from_numpy(y_).float()
 
@@ -31,26 +31,36 @@ def gradient_descent(y_, x_):
 
     steps_without_improvement = 0
     best_loss = np.inf
+    best_proj_vectors = None
+    best_reg_vector = None
+    i = 0
     for i in range(100000):
+        with torch.no_grad():
+            for pv_index_1 in range(N_VECTORS):
+                v = proj_vectors[:, pv_index_1]
+                norm = v.norm(p=2, dim=0, keepdim=True)
+                proj_vectors[:, pv_index_1] = v / norm.item()
+                for pv_index_2 in range(pv_index_1 + 1, N_VECTORS):
+                    u = proj_vectors[:, pv_index_2]
+                    proj_u_on_v = torch.dot(u, v) / torch.dot(v, v) * v
+                    proj_vectors[:, pv_index_2] = u - proj_u_on_v
+
         optimizer.zero_grad()
-        proj_vars = (proj_vectors.T @ x_ @ proj_vectors).squeeze()
-        output = reg_vector[2] * torch.log(proj_vars[:,0]) + reg_vector[1]*torch.log(proj_vars[:,1]) + reg_vector[0]
-        loss = torch.mean(torch.abs(output - y_))
+        output = predicted_output(proj_vectors, x_, reg_vector)
+        loss = torch.mean((output - y_) ** 2)
 
         if loss.item() < best_loss:
             best_loss = loss.item()
+            best_proj_vectors = proj_vectors.detach().numpy()
+            best_reg_vector = reg_vector.detach().numpy()
             steps_without_improvement = 0
         else:
             steps_without_improvement += 1
 
-        if time.time() - now > 1:
-            print("loss: ", loss.item())
+        if time.time() - now > np.inf:
+            print("loss: ", best_loss)
             print("steps taken: {}".format(i))
             now = time.time()
-
-        with torch.no_grad():
-            norm = proj_vector.norm(p=2, dim=0, keepdim=True)
-            proj_vector = proj_vector / norm.item()
 
         loss.backward()
         optimizer.step()
@@ -58,14 +68,25 @@ def gradient_descent(y_, x_):
         if steps_without_improvement > PATIENCE:
             break
 
-    return proj_vector.detach().numpy(), reg_vector.detach().numpy()
+    print("final loss: ", best_loss)
+    print("total steps taken: {}".format(i))
+    return best_proj_vectors, best_reg_vector
 
 
 def predicted_output(proj_, x_, reg_vector_):
-    return reg_vector_[1] * np.log((proj_.T @ x_ @ proj_).squeeze()) + reg_vector_[0]
+    is_torch = isinstance(x_, torch.Tensor)
+    if not is_torch:
+        proj_ = torch.from_numpy(proj_).float()
+        x_ = torch.from_numpy(x_).float()
+        reg_vector_ = torch.from_numpy(reg_vector_).float()
+
+    proj_vars = torch.sum((proj_.T @ x_) * proj_.T, dim=-1)
+    output = (reg_vector_[0] + reg_vector_[1:].T @ proj_vars.T).squeeze()
+    return output if is_torch else output.detach().numpy()
 
 
 def job(shared_objects, k_):
+    print("Starting fold {}".format(k_))
     kf_split_, x_, y_ = shared_objects
 
     train_, test_ = kf_split_[k_]
@@ -90,6 +111,7 @@ def torch_variance_estimation():
 
         correlations = [None] * NUM_REPETITIONS
         for i in range(NUM_REPETITIONS):
+            print("Repetition {}".format(i))
             kf = KFold(n_splits=K_FOLDS, shuffle=True)
             kf_split = list(kf.split(y))
 
