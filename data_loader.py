@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 import scipy.io as sio
 
+import utils
+
 MAT_FILES_DICT = \
     {
         "sadie-marie":
@@ -100,9 +102,19 @@ def load_mat(file):
         return mat73.loadmat(file)
 
 
+def get_imagen_data_sets(as_r, clean_data=True, file_c=None, y_col_c=None):
+    dl_ = DataLoader(as_r, protocol_c="IMAGEN", file_c=file_c, y_col_c=y_col_c, clean_data=clean_data)
+    return dl_.data_sets
+
+
+def get_test_data_sets(as_r, clean_data=True):
+    dl_ = DataLoader(as_r, protocol_c="test_data", clean_data=clean_data)
+    return dl_.data_sets
+
+
 class DataLoader:
 
-    def __init__(self, protocol_c=None, file_c=None, y_col_c=None, clean_data=False):
+    def __init__(self, as_r, protocol_c=None, file_c=None, y_col_c=None, clean_data=False):
         self.data_sets = []
 
         self.display_protocol = None
@@ -123,9 +135,14 @@ class DataLoader:
         if clean_data:
             self.clean_data()
 
+        if as_r:
+            for ds in self.data_sets:
+                ds.x = utils.fisher_z_to_r(ds.x)
+                for i in range(ds.x.shape[0]):
+                    ds.x[i, i, :] = 1
+
     def clean_data(self):
         for data_set_ in self.data_sets:
-
             x = data_set_.get_x()
             y = data_set_.get_y()
 

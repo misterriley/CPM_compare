@@ -12,17 +12,23 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+import data_loader
 from data_loader import DataLoader
 
-DO_NESTED_KFOLD = True
+USE_TEST_DATA = False
+
+DO_NESTED_KFOLD = False
 N_OUTER_FOLDS = 3
 N_OUTER_REPEATS = 15
 COLLAPSE_VECTORS = True
-N_FOLDS = 5  # if None, set to leave-one-out CV
-N_REPEATS = 10
+N_FOLDS = 10  # if None, set to leave-one-out CV
+N_REPEATS = 20
 RANDOMIZE_DATA = True
-N_JOBS = 5
-N_ALPHAS = 0
+if USE_TEST_DATA:
+    N_JOBS = None
+else:
+    N_JOBS = 3
+N_ALPHAS = 20
 DESCS = ["negative", "positive", "all"]
 GUARANTEED_ALPHAS = [0.1, 0.05, 0.01, 0.005, 0.001]
 
@@ -39,7 +45,7 @@ class CPMMasker:
     def clone(self):
         return CPMMasker(self.x, self.y, self.corrs)
 
-    def get_x(self, threshold, mask_type, x_=None):
+    def get_x(self, threshold, mask_type, x_=None, weighted=False):
 
         if x_ is None:
             x_ = self.x
@@ -55,7 +61,12 @@ class CPMMasker:
         n_pos = pos_masked.shape[1]
         n_neg = neg_masked.shape[1]
 
-        if COLLAPSE_VECTORS:
+        if weighted:
+            pos_weights = [c[0] for c in self.corrs if c[1] < threshold and c[0] > 0]
+            neg_weights = [-c[0] for c in self.corrs if c[1] < threshold and c[0] < 0]
+            pos_masked = (pos_masked @ np.array(pos_weights)).reshape(-1, 1)
+            neg_masked = (neg_masked @ np.array(neg_weights)).reshape(-1, 1)
+        else:
             pos_masked = pos_masked.sum(axis=1).reshape(-1, 1)
             neg_masked = neg_masked.sum(axis=1).reshape(-1, 1)
 
@@ -66,10 +77,7 @@ class CPMMasker:
             ret = neg_masked
             n_params = n_neg
         else:
-            if COLLAPSE_VECTORS:
-                ret = pos_masked - neg_masked
-            else:
-                ret = x_[:, [pos_mask[j] or neg_mask[j] for j in range(len(self.corrs))]]
+            ret = pos_masked - neg_masked
             n_params = n_pos + n_neg
 
         return ret, n_params
@@ -82,27 +90,34 @@ def get_masker(fold_index, x_, y_, kf_):
 
 
 def run_one_cpm(alpha_, kf_, fold_masker_arr_, desc_, x_, y_, repeat_index_):
-    y_pred = np.zeros(y_.shape)
+    y_pred_unweighted = np.zeros(y_.shape)
+    y_pred_weighted = np.zeros(y_.shape)
     total_params = 0
     for j in range(len(kf_)):
         train_indices = kf_[j][0]
         test_indices = kf_[j][1]
 
         fold_masker = fold_masker_arr_[j]
-        train_x_masked, n_params = fold_masker.get_x(alpha_, desc_)
+        train_x_masked_unweighted, n_params = fold_masker.get_x(alpha_, desc_, weighted=False)
+        train_x_masked_weighted, _ = fold_masker.get_x(alpha_, desc_, weighted=True)
         train_y = y_[train_indices]
 
-        model = LinearRegression()
-        model.fit(train_x_masked, train_y)
+        model_weighted = LinearRegression()
+        model_weighted.fit(train_x_masked_weighted, train_y)
+
+        model_unweighted = LinearRegression()
+        model_unweighted.fit(train_x_masked_unweighted, train_y)
 
         test_x, n_params = fold_masker.get_x(alpha_, desc_, x_[test_indices])
-        y_pred[test_indices] = model.predict(test_x)
+        y_pred_weighted[test_indices] = model_weighted.predict(test_x)
+        y_pred_unweighted[test_indices] = model_unweighted.predict(test_x)
         total_params += n_params
 
     print(f"\t{desc_} alpha {alpha_:.6f} repeat {repeat_index_ + 1} finished")
-    rho = stats.spearmanr(y_, y_pred)[0]
+    rho_weighted = stats.spearmanr(y_, y_pred_weighted)[0]
+    rho_unweighted = stats.spearmanr(y_, y_pred_unweighted)[0]
     avg_params = total_params / len(kf_)
-    return alpha_, rho, avg_params
+    return alpha_, rho_weighted, rho_unweighted, avg_params
 
 
 def print_efficiency(insights_, n_jobs_):
@@ -111,25 +126,31 @@ def print_efficiency(insights_, n_jobs_):
 
 def save_data(data_df_, folds_, repeats, desc_, source):
     ax = sns.lineplot(x="alpha",
-                      y="rho",
+                      y="rho_weighted",
                       data=data_df_,
-                      label="rho",
-                      legend=False)
-    ax2 = ax.twinx()
+                      label="rho_weighted",
+                      color="blue")
+    #ax2 = ax.twinx()
+    #sns.lineplot(x="alpha",
+                 #y="n_params",
+                 #data=data_df_,
+                 #ax=ax2,
+                 #label="n_params",
+                 #color="red")
+    #ax2.figure.legend(bbox_to_anchor=(0, 1))
     sns.lineplot(x="alpha",
-                 y="n_params",
+                 y="rho_unweighted",
                  data=data_df_,
-                 ax=ax2,
-                 label="n_params",
-                 legend=False,
-                 color="red")
-    ax.figure.legend()
+                 ax=ax,
+                 label="rho_unweighted",
+                 color="green")
+    plt.legend()
     plt.title(source + " " + desc_)
 
     ax.set_xscale("log")
-    ax2.set_xscale("log")
+    #ax2.set_xscale("log")
     # ax.set_yscale("log")
-    ax2.set_yscale("log")
+    #ax2.set_yscale("log")
 
     save_file_name = f"{source}_{desc_}_{folds_}fold_{repeats}_repeats.png"
 
@@ -137,7 +158,7 @@ def save_data(data_df_, folds_, repeats, desc_, source):
     if not os.path.exists(save_file_dir):
         os.makedirs(save_file_dir)
     plt.savefig(os.path.join(save_file_dir, save_file_name), bbox_inches="tight")
-    plt.close()
+    plt.close("all")
 
     report_file_name = f"{source}_{desc_}_{folds_}fold_{repeats}_repeats.csv"
     data_df_.to_csv(os.path.join(save_file_dir, report_file_name))
@@ -155,7 +176,7 @@ def do_one_repeat(shared_objects_, repeat_idx_):
     for desc in descs:
         cpm_results = [run_one_cpm(alpha_, kf, fold_masker_arr, desc, x_, y_, repeat_idx_)
                        for alpha_ in alphas_]
-        cpm_df = pd.DataFrame(cpm_results, columns=["alpha", "rho", "n_params"])
+        cpm_df = pd.DataFrame(cpm_results, columns=["alpha", "rho_weighted", "rho_unweighted", "n_params"])
         data_dfs_[desc] = cpm_df
 
     print(f"Finished repeat {repeat_idx_ + 1}")
@@ -164,9 +185,14 @@ def do_one_repeat(shared_objects_, repeat_idx_):
 
 def print_recommended_thread_counts():
     thread_counts = set([int(math.ceil(N_REPEATS / i)) for i in range(1, N_REPEATS + 1)])
-    thread_counts = [str(i) for i in sorted(thread_counts, reverse=True) if i <= multiprocessing.cpu_count()]
+    thread_counts_str = [str(i) for i in sorted(thread_counts, reverse=True) if i <= multiprocessing.cpu_count()]
 
-    print(f"recommended values for N_JOBS: {', '.join(sorted(thread_counts))}")
+    print(f"recommended values for N_JOBS: {', '.join(sorted(thread_counts_str))}")
+
+    global N_JOBS
+    if N_JOBS is None:
+        N_JOBS = max([x for x in thread_counts if x <= multiprocessing.cpu_count()])
+        print(f"N_JOBS set to {N_JOBS}")
 
 
 def do_search(x, y, folds, alphas, job_count, descriptor, save):
@@ -192,60 +218,14 @@ def do_search(x, y, folds, alphas, job_count, descriptor, save):
     return repeats_data
 
 
-def do_nested_kfold(x, y, folds, alphas, job_count, descriptor):
-    output = pd.DataFrame(columns=["alpha", "rho", "n_params", "desc"])
-    for repeat_index in range(N_OUTER_REPEATS):
-        kf_outer = KFold(n_splits=N_OUTER_FOLDS, shuffle=RANDOMIZE_DATA)
-        for fold_index in range(N_OUTER_FOLDS):
-            print(f" --- Started outer fold {fold_index + 1} in repeat {repeat_index + 1} --- ")
-            f = list(kf_outer.split(x))[fold_index]
-            results = pd.DataFrame(columns=["alpha", "rho", "n_params", "desc"])
-            result = do_search(x[f[0], :], y[f[0]], folds, alphas, job_count, descriptor, False)
-            for result_index in range(len(result)):
-                for desc in DESCS:
-                    result_df = result[result_index][desc]
-                    result_df["desc"] = desc
-                    results = pd.concat([results, result_df], ignore_index=True)
-
-            results = results.groupby(by=["desc", "alpha"]).mean().reset_index()
-            test_x = x[f[1], :]
-            test_y = y[f[1]]
-            print(f" --- Testing outer fold {fold_index + 1} --- ")
-            for desc in DESCS:
-                print(f" --- Testing {desc} --- ")
-                best_rho_idx = results.loc[results["desc"] == desc, "rho"].idxmax()
-                best_alpha = results.loc[best_rho_idx, "alpha"]
-
-                test_outcome = do_one_repeat((test_x, test_y, folds, [best_alpha], [desc]), 0)
-                test_df = test_outcome[desc]
-                test_df["desc"] = desc
-                output = pd.concat([output, test_df], ignore_index=True)
-
-    if not os.path.exists(f"./outputs/{descriptor}"):
-        os.makedirs(f"./outputs/{descriptor}")
-    output.to_csv(f"./outputs/{descriptor}/{descriptor}_{folds}fold_{N_OUTER_FOLDS}_outer_folds.csv")
-
-
 def main():
     print_recommended_thread_counts()
 
-    dl = DataLoader(
-        protocol_c=[
-            "IMAGEN",
-            # "sadie-marie",
-            # "test_data"
-        ],
-        file_c=None,
-        # [
-        # "mats_sst_fu2.mat",
-        # "rest_estroop_acc_interf_2460_cpm_ready.mat",
-        # "enback_estroop_acc_interf_2460_cpm_ready.mat",
-        # "stp_all_clean2.mat"
-        # ],
-        y_col_c=None,
-        clean_data=True)
-
-    for data_set in dl.get_data_sets():
+    if USE_TEST_DATA:
+        sets = data_loader.get_test_data_sets(as_r=False, clean_data=True)
+    else:
+        sets = data_loader.get_imagen_data_sets(as_r=False, clean_data=True, file_c="mats_mid_bsl.mat")
+    for data_set in sets:
         x = data_set.get_x()
         y = data_set.get_y()
         descriptor = data_set.get_descriptor()
@@ -260,16 +240,13 @@ def main():
 
         job_count = N_JOBS if N_JOBS is not None else multiprocessing.cpu_count()
         folds = N_FOLDS if N_FOLDS is not None else num_peeps
-        alphas = np.logspace(0, -6, num=N_ALPHAS, base=10)
+        alphas = np.logspace(0, -4, num=N_ALPHAS, base=10)
         for alpha in GUARANTEED_ALPHAS:
             if alpha not in alphas:
                 alphas = np.append(alphas, alpha)
         alphas = np.sort(alphas)
 
-        if DO_NESTED_KFOLD:
-            do_nested_kfold(x, y, folds, alphas, job_count, descriptor)
-        else:
-            do_search(x, y, folds, alphas, job_count, descriptor, True)
+        do_search(x, y, folds, alphas, job_count, descriptor, True)
 
 
 def analyze_outputs():
