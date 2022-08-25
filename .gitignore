@@ -6,3 +6,4 @@ __pycache__/
 old/ 
 /test_data_ridge_test_df.csv
 /IMAGEN_mats_mid_bsl_kirby_c_estimated_k_all_trials_fu2_ridge_test_df.csv
+results/* 
