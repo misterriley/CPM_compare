@@ -11,17 +11,14 @@ import data_loader
 import numpy as np
 from sklearn.decomposition import PCA
 from scipy.stats import pearsonr, spearmanr
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Lasso
 
 N_SPLITS = 10
-
 MAX_PCAS = 45
-
-N_JOBS = 3
-
-N_REPEATS = 20
-
+N_JOBS = 4
+N_REPEATS = 100
 DO_PCA_REGRESSION = False
+MAX_ITER = 100000
 
 
 def predict_y(x_train, y_train, x_test):
@@ -31,16 +28,17 @@ def predict_y(x_train, y_train, x_test):
     return y_pred
 
 
+# noinspection PyTypeChecker
 def one_full_cv(shared_objects, param):
     x_, y_ = shared_objects
-    n_pcs = l1_constant = None
+    n_pcs = l1_constant = lr = None
     if DO_PCA_REGRESSION:
         n_pcs = param
     else:
         l1_constant = param
         # if l1_constant == 0 and Lasso() is used then it throws warnings
-        lr = sklearn.linear_model.LinearRegression() if l1_constant == 0 else \
-            sklearn.linear_model.Lasso(l1_constant, warm_start=True)
+        lr = LinearRegression() if l1_constant == 0 else \
+            Lasso(l1_constant, warm_start=True, max_iter=MAX_ITER)
 
     kf = sklearn.model_selection.KFold(n_splits=N_SPLITS, shuffle=True)
     y_preds = [None] * x_.shape[1]
@@ -90,6 +88,7 @@ def lasso_regression(x_test, x_train, y_train, lr):
     return y_pred, nnc
 
 
+# noinspection PyTypeChecker
 def pca_regression(n_pcs, x_test, x_train, y_train):
     pca = PCA(n_components=MAX_PCAS)
     pca.fit(x_train.T)
@@ -106,28 +105,30 @@ def pca_regression(n_pcs, x_test, x_train, y_train):
     return y_pred
 
 
-def do_pca_regression(pool, results_df):
+def do_pca_regression(worker_pool, out_df):
     for n_pca_vectors in range(1, MAX_PCAS + 1):
-        results = pool.map(one_full_cv, [n_pca_vectors] * N_REPEATS)
+        results = worker_pool.map(one_full_cv, [n_pca_vectors] * N_REPEATS)
         for i in range(len(results)):
-            results_df.loc[len(results_df)] = [n_pca_vectors, i, *results[i]]
+            out_df.loc[len(out_df)] = [n_pca_vectors, i, *results[i]]
 
 
-def do_l1_regression(pool, results_df):
+def do_l1_regression(worker_pool, out_df):
     for l1_const in [0, *np.logspace(-15, 7, num=MAX_PCAS)]:
-        results = pool.map(one_full_cv, [l1_const] * N_REPEATS)
+        begin = time.time()
+        results = worker_pool.map(one_full_cv, [l1_const] * N_REPEATS)
         if l1_const == 0:
             l1_const = np.finfo(float).eps  # smallest possible value, must be positive since displayed log scale
         for i in range(len(results)):
-            results_df.loc[len(results_df), :] = [l1_const, i, *results[i]]
+            out_df.loc[len(out_df), :] = [l1_const, i, *results[i]]
+        print("time elapsed: ", time.time() - begin)
 
 
-def save_one_item(data, x_col, y_col, title, data_set, use_log_scale):
-    plt.plot(x_col, y_col, data=data, marker="o", linestyle="-", color="b")
+def save_one_item(data, x_column, y_col, title, data_set, log_scale):
+    plt.plot(x_column, y_col, data=data, marker="o", linestyle="-", color="b")
     plt.title(title)
-    plt.xlabel(x_col)
+    plt.xlabel(x_column)
     plt.ylabel(y_col)
-    if use_log_scale:
+    if log_scale:
         plt.xscale("log")
     plt.savefig("results/pca_regression_results_{}_{}.png".format(y_col, data_set.get_descriptor()))
     plt.close('all')

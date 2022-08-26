@@ -235,6 +235,7 @@ class DataLoader:
             y = load_txt(y_file_m, delimiter="\t")
             self.build_data_set(x, y)
         elif y_file_m.endswith(".xlsx"):
+            # noinspection PyArgumentList
             y = pd.read_excel(io=y_file_m, dtype=np.float32)
             self.add_y_col_from_mat(y_col_m, x, y)
         else:
@@ -246,7 +247,8 @@ if __name__ == "__main__":
 
     dl = DataLoader(protocol_c=["IMAGEN"],
                     file_c=["mats_sst_fu2.mat"],
-                    y_col_c=["surps_c_sensation_seeking_average_fu2"])
+                    y_col_c=["surps_c_sensation_seeking_average_fu2"],
+                    as_r=True)
     data_sets = dl.get_data_sets()
     for data_set in data_sets:
         print(data_set.get_descriptor())

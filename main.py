@@ -2,18 +2,17 @@ import math
 import multiprocessing
 import os
 
-import scipy.stats as stats
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import scipy.stats as stats
 import seaborn
+import seaborn as sns
 from mpire import WorkerPool
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import KFold
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 
 import data_loader
-from data_loader import DataLoader
 
 USE_TEST_DATA = False
 
@@ -114,7 +113,9 @@ def run_one_cpm(alpha_, kf_, fold_masker_arr_, desc_, x_, y_, repeat_index_):
         total_params += n_params
 
     print(f"\t{desc_} alpha {alpha_:.6f} repeat {repeat_index_ + 1} finished")
+    # noinspection PyTypeChecker
     rho_weighted = stats.spearmanr(y_, y_pred_weighted)[0]
+    # noinspection PyTypeChecker
     rho_unweighted = stats.spearmanr(y_, y_pred_unweighted)[0]
     avg_params = total_params / len(kf_)
     return alpha_, rho_weighted, rho_unweighted, avg_params
@@ -130,14 +131,14 @@ def save_data(data_df_, folds_, repeats, desc_, source):
                       data=data_df_,
                       label="rho_weighted",
                       color="blue")
-    #ax2 = ax.twinx()
-    #sns.lineplot(x="alpha",
-                 #y="n_params",
-                 #data=data_df_,
-                 #ax=ax2,
-                 #label="n_params",
-                 #color="red")
-    #ax2.figure.legend(bbox_to_anchor=(0, 1))
+    # ax2 = ax.twinx()
+    # sns.lineplot(x="alpha",
+    # y="n_params",
+    # data=data_df_,
+    # ax=ax2,
+    # label="n_params",
+    # color="red")
+    # ax2.figure.legend(bbox_to_anchor=(0, 1))
     sns.lineplot(x="alpha",
                  y="rho_unweighted",
                  data=data_df_,
@@ -148,9 +149,9 @@ def save_data(data_df_, folds_, repeats, desc_, source):
     plt.title(source + " " + desc_)
 
     ax.set_xscale("log")
-    #ax2.set_xscale("log")
+    # ax2.set_xscale("log")
     # ax.set_yscale("log")
-    #ax2.set_yscale("log")
+    # ax2.set_yscale("log")
 
     save_file_name = f"{source}_{desc_}_{folds_}fold_{repeats}_repeats.png"
 

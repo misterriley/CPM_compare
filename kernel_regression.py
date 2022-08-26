@@ -8,22 +8,20 @@ from scipy import stats
 from sklearn.model_selection import KFold
 
 import data_loader
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-import statsmodels.api as sm
-
 import utils
 
 NORM_NUMBER = .1
+
+
 def dist_between_matrices(a, b):
     # https: // gmarti.gitlab.io / math / 2019 / 12 / 25 / riemannian - mean - correlation.html
     # _, eigenvals, _ = np.linalg.svd(np.linalg.solve(a, b))
-    #return np.sqrt(np.sum(np.log(eigenvals) ** 2))
+    # return np.sqrt(np.sum(np.log(eigenvals) ** 2))
 
     # froebnius norm of the difference between the two matrices
-    #return np.power(np.sum(np.power(np.abs(a - b), NORM_NUMBER)), 1 / NORM_NUMBER)
+    # return np.power(np.sum(np.power(np.abs(a - b), NORM_NUMBER)), 1 / NORM_NUMBER)
     return utils.wasserstein_distance_cov(a, b)
+
 
 def get_distance(x_, i, j, verbose=False):
     if verbose:
@@ -76,10 +74,10 @@ def choose_h(x_data, y_data, description_data, read_from_file):
     # plt.show(block=True)
 
     for h_maybe in np.logspace(np.log10(.00001), np.log10(.01), num=10000, base=10):
-        y_hat = rbf_reg(dist_matrix, h_maybe, y_data)
-        if np.isnan(y_hat).any() or np.isinf(y_hat).any():
+        pred = rbf_reg(dist_matrix, h_maybe, y_data)
+        if np.isnan(pred).any() or np.isinf(pred).any():
             continue
-        r = stats.pearsonr(y_data, y_hat)
+        r = stats.pearsonr(y_data, pred)
         print("h: {}, r: {}".format(h_maybe, r))
         if r[0] > best_r:
             best_h = h_maybe
@@ -90,14 +88,14 @@ def choose_h(x_data, y_data, description_data, read_from_file):
 
 def rbf_reg(dist_matrix, h_reg, y_data):
     kf = KFold(n_splits=y_data.shape[0]).split(y_data)
-    y_hat = np.zeros(y_data.shape)
+    pred = np.zeros(y_data.shape)
     for train_index, test_index in kf:
         for j in test_index:
             # add a tiny positive value to each weight to avoid division by zero
             weights = rbf(dist_matrix[j, train_index], h_reg) + 1e-10
             num = weights * y_data[train_index]
-            y_hat[j] = np.sum(num) / np.sum(weights)
-    return y_hat
+            pred[j] = np.sum(num) / np.sum(weights)
+    return pred
 
 
 def distance_calc_test(x_data):
@@ -115,7 +113,7 @@ def distance_calc_test(x_data):
 
 
 if __name__ == "__main__":
-    test_data = data_loader.get_test_data_sets()[0]
+    test_data = data_loader.get_test_data_sets(as_r=False)[0]
     x = test_data.get_x()
     y = test_data.get_y()
 
@@ -123,5 +121,6 @@ if __name__ == "__main__":
 
     h = choose_h(x, y, description, False)
     y_hat = rbf_reg(get_x_distance_matrix(x, description), h, y)
+    # noinspection PyTypeChecker
     print(stats.spearmanr(y, y_hat))
     print(h)

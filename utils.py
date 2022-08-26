@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import sys
-import scipy.io
+import scipy.io as sio
 from sklearn.preprocessing import PowerTransformer, FunctionTransformer, StandardScaler
 
 
@@ -20,13 +20,13 @@ def wasserstein_distance_cov(a: np.ndarray, b: np.ndarray):
     return np.trace(a + b - 2 * matrix_sqrt(m))
 
 
-def save_run_outputs_subsample_nogrid(out_path, iter, outputs, y):
+def save_run_outputs_subsample_nogrid(out_path, iter_, outputs, y):
     """
     Save run outputs for subsample CPM
     :param out_path: output path
     :type out_path: string
-    :param iter: iteration number
-    :type iter: int
+    :param iter_: iteration number
+    :type iter_: int
     :param outputs: outputs of kfold_cpm_subsample
     :type outputs: dict
     :param y: actual target behavioral data
@@ -35,29 +35,31 @@ def save_run_outputs_subsample_nogrid(out_path, iter, outputs, y):
     :rtype: None
     """
     for fold, (network_p, network_n) in enumerate(zip(outputs['edges_p'], outputs['edges_n'])):
-        np.savetxt('{}/positive_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter, fold + 1), network_p, fmt='%d')
-        np.savetxt('{}/negative_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter, fold + 1), network_n, fmt='%d')
+        np.savetxt('{}/positive_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter_, fold + 1), network_p,
+                   fmt='%d')
+        np.savetxt('{}/negative_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter_, fold + 1), network_n,
+                   fmt='%d')
 
     df_y_predict = pd.DataFrame(columns=['y_pred_both', 'y_actual'])
     df_y_predict['y_pred_both'] = outputs['y_pred_both'].flatten()
     df_y_predict['y_actual'] = y
-    df_y_predict.to_csv('{}/y_prediction_iter{}.csv'.format(out_path, iter))
+    df_y_predict.to_csv('{}/y_prediction_iter{}.csv'.format(out_path, iter_))
 
     df_fit = pd.DataFrame(columns=['both_m', 'both_b'],
                           index=['fold {}'.format(x + 1) for x in range(len(outputs['fit_b']))])
     df_fit['both_m'] = [fit.coef_[0][0] for fit in outputs['fit_b']]
     df_fit['both_b'] = [fit.intercept_[0] for fit in outputs['fit_b']]
-    df_fit.to_csv('{}/fit_parameters_iter{}.csv'.format(out_path, iter))
+    df_fit.to_csv('{}/fit_parameters_iter{}.csv'.format(out_path, iter_))
     return None
 
 
-def save_run_outputs_subsample(out_path, iter, outputs, y):
+def save_run_outputs_subsample(out_path, iter_, outputs, y):
     """
     Save run outputs for subsample CPM
     :param out_path: output path
     :type out_path: string
-    :param iter: iteration number
-    :type iter: int
+    :param iter_: iteration number
+    :type iter_: int
     :param outputs: outputs of kfold_cpm_subsample
     :type outputs: dict
     :param y: actual target behavioral data
@@ -66,25 +68,27 @@ def save_run_outputs_subsample(out_path, iter, outputs, y):
     :rtype: None
     """
     for fold, (network_p, network_n) in enumerate(zip(outputs['edges_p'], outputs['edges_n'])):
-        np.savetxt('{}/positive_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter, fold + 1), network_p, fmt='%d')
-        np.savetxt('{}/negative_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter, fold + 1), network_n, fmt='%d')
+        np.savetxt('{}/positive_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter_, fold + 1), network_p,
+                   fmt='%d')
+        np.savetxt('{}/negative_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter_, fold + 1), network_n,
+                   fmt='%d')
 
     df_y_predict = pd.DataFrame(columns=['y_pred_both', 'y_actual'])
     df_y_predict['y_pred_both'] = outputs['y_pred_both'].flatten()
     df_y_predict['y_actual'] = y
-    df_y_predict.to_csv('{}/y_prediction_iter{}.csv'.format(out_path, iter))
+    df_y_predict.to_csv('{}/y_prediction_iter{}.csv'.format(out_path, iter_))
 
     df_fit = pd.DataFrame(columns=['both_m', 'both_b'],
                           index=['fold {}'.format(x + 1) for x in range(len(outputs['fit_b']))])
     df_fit['both_m'] = [fit.coef_[0][0] for fit in outputs['fit_b']]
     df_fit['both_b'] = [fit.intercept_[0] for fit in outputs['fit_b']]
-    df_fit.to_csv('{}/fit_parameters_iter{}.csv'.format(out_path, iter))
+    df_fit.to_csv('{}/fit_parameters_iter{}.csv'.format(out_path, iter_))
 
     for fold, dict_best_params in enumerate(outputs['best_params']):
         df_params = pd.DataFrame(columns=list(dict_best_params.keys()), index=['fold {}'.format(fold+1)])
         for param in list(dict_best_params.keys()):
             df_params[param] = dict_best_params[param]
-        df_params.to_csv('{}/best_params_iter{}_fold_{}.csv'.format(out_path, iter, fold+1))
+        df_params.to_csv('{}/best_params_iter{}_fold_{}.csv'.format(out_path, iter_, fold + 1))
     return None
 
 
@@ -140,7 +144,7 @@ def save_matlab_mat(path, matname, x, y, lst_subj):
     :rtype: None
     """
     mdict = {"x": x, "y": y, "subjectkey": lst_subj}
-    scipy.io.savemat("{}/{}".format(path, matname), mdict)
+    sio.savemat("{}/{}".format(path, matname), mdict)
     return None
 
 
@@ -157,7 +161,7 @@ def read_matlab_mat(path, matname):
         lst_subjectkey: list of subject keys.
     :rtype: (NumPy Array, NumPy Array, list of strings)
     """
-    mdict = scipy.io.loadmat("{}/{}".format(path, matname))
+    mdict = sio.loadmat("{}/{}".format(path, matname))
     x = mdict['x']
     y = mdict['y'][0]
     lst_subjectkey = mdict['subjectkey']
@@ -243,13 +247,13 @@ def return_estimator_coef(est, mode):
         quit()
 
 
-def save_run_outputs(out_path, iter, outputs, y_run, mode='linear'):
+def save_run_outputs(out_path, iter_, outputs, y_run, mode='linear'):
     """
     Save k-fold CPM outputs.
     :param out_path: output directory.
     :type out_path: string.
-    :param iter: iteration number.
-    :type iter: integer.
+    :param iter_: iteration number.
+    :type iter_: integer.
     :param outputs: outputs from kfold_cpm.
     :type outputs: dict.
     :param y_run: input behav data for kfold_cpm.
@@ -260,17 +264,20 @@ def save_run_outputs(out_path, iter, outputs, y_run, mode='linear'):
     :rtype: None
     """
     for fold, (network_p, network_n) in enumerate(zip(outputs['edges_p'], outputs['edges_n'])):
-        np.savetxt('{}/positive_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter, fold + 1), network_p, fmt='%d')
-        np.savetxt('{}/negative_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter, fold + 1), network_n, fmt='%d')
+        np.savetxt('{}/positive_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter_, fold + 1), network_p,
+                   fmt='%d')
+        np.savetxt('{}/negative_network_from_training_iter{}_fold_{}.txt'.format(out_path, iter_, fold + 1), network_n,
+                   fmt='%d')
 
     df_y_predict = pd.DataFrame(columns=['y_pred_pos', 'y_pred_neg', 'y_pred_both', 'y_actual'])
     df_y_predict['y_pred_pos'] = outputs['y_pred_pos']
     df_y_predict['y_pred_neg'] = outputs['y_pred_neg']
     df_y_predict['y_pred_both'] = outputs['y_pred_both']
     df_y_predict['y_actual'] = y_run
-    df_y_predict.to_csv('{}/y_prediction_iter{}.csv'.format(out_path, iter))
+    df_y_predict.to_csv('{}/y_prediction_iter{}.csv'.format(out_path, iter_))
 
-    df_fit = pd.DataFrame(columns=['pos_m', 'pos_b', 'neg_m', 'neg_b', 'both_m', 'both_b'], index=['fold {}'.format(x + 1) for x in range(len(outputs['fit_p']))])
+    df_fit = pd.DataFrame(columns=['pos_m', 'pos_b', 'neg_m', 'neg_b', 'both_m', 'both_b'],
+                          index=['fold {}'.format(x + 1) for x in range(len(outputs['fit_p']))])
     df_fit['pos_m'] = [return_estimator_coef(fit, mode)[0] for fit in outputs['fit_p']]
     df_fit['pos_b'] = [return_estimator_coef(fit, mode)[1] for fit in outputs['fit_p']]
     df_fit['neg_m'] = [return_estimator_coef(fit, mode)[0] for fit in outputs['fit_n']]
@@ -281,6 +288,6 @@ def save_run_outputs(out_path, iter, outputs, y_run, mode='linear'):
         df_fit['pos_alpha'] = [return_estimator_coef(fit, mode)[2] for fit in outputs['fit_p']]
         df_fit['neg_alpha'] = [return_estimator_coef(fit, mode)[2] for fit in outputs['fit_n']]
         df_fit['both_alpha'] = [return_estimator_coef(fit, mode)[2] for fit in outputs['fit_b']]
-    df_fit.to_csv('{}/fit_parameters_iter{}.csv'.format(out_path, iter))
+    df_fit.to_csv('{}/fit_parameters_iter{}.csv'.format(out_path, iter_))
 
     return None

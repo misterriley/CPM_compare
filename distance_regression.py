@@ -6,7 +6,6 @@ from mpire import WorkerPool
 from scipy import stats
 
 import data_loader
-import utils
 
 from sklearn.model_selection import KFold
 
@@ -100,8 +99,6 @@ def fit_x_to_y(k, y, known_x, known_y):
         if steps_since_improvement > 100:
             break
 
-        old_x = x_vector.detach().clone()
-
         optimizer.step()
 
         if x_vector.isnan().any():
@@ -131,7 +128,6 @@ def fit_y_to_x(k, x, known_x_list, known_y_list):
     torch.autograd.set_detect_anomaly(True)
 
     min_loss = float("inf")
-    best = None
 
     steps_since_improvement = 0
     for j in range(100000):
@@ -144,7 +140,6 @@ def fit_y_to_x(k, x, known_x_list, known_y_list):
         min_loss = min(loss_.item(), min_loss)
         if min_loss < last_min:
             steps_since_improvement = 0
-            best = y.detach().item()
         else:
             steps_since_improvement += 1
 
@@ -173,22 +168,20 @@ def main():
         # "stp_all_clean2.mat"
         # ],
         y_col_c=None,
-        clean_data=True)
+        clean_data=True, as_r=True)
     for data_set in dl.data_sets:
         x = torch.from_numpy(data_set.x).float()
         y = data_set.y
-        x_as_r = utils.fisher_z_to_r(x)
-        for i in range(x.shape[0]):
-            x_as_r[i, i, :] = 1  # the diagonal would be ~.99999 otherwise
         kf = KFold(n_splits=5, shuffle=True).split(y)
         y_hat = [None] * len(y)
         for train_index, test_index in kf:
-            split_x_as_r = x_as_r[:, :, train_index]
+            split_x_as_r = x[:, :, train_index]
             split_y = y[train_index]
             k, x_dist_matrix, y_dist_matrix = fit(split_x_as_r, split_y)
             for ti in test_index:
-                y_hat[ti] = fit_y_to_x(k, x_as_r.unbind(2)[ti], split_x_as_r, split_y)
+                y_hat[ti] = fit_y_to_x(k, x.unbind(2)[ti], split_x_as_r, split_y)
 
+        # noinspection PyTypeChecker
         print(stats.spearmanr(y, y_hat))
 
 

@@ -35,7 +35,6 @@ def gradient_descent(y_, x_, l1_constant):
     best_reg_vector = None
     best_l1_norm = np.inf
     i = 0
-    lips = 0
     last_lips = 0
     lips_window = PATIENCE
     for i in range(100000):
@@ -123,6 +122,7 @@ def job(shared_objects, k_):
     return test_predictions_, test_y_
 
 
+# noinspection PyTypeChecker
 def torch_variance_estimation():
     sets = data_loader.get_test_data_sets(as_r=True, clean_data=True)
     for data_set in sets:
