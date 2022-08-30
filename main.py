@@ -14,22 +14,22 @@ from sklearn.model_selection import KFold
 
 import data_loader
 
-USE_TEST_DATA = False
+USE_TEST_DATA = True
 
 DO_NESTED_KFOLD = False
 N_OUTER_FOLDS = 3
 N_OUTER_REPEATS = 15
-COLLAPSE_VECTORS = True
+
 N_FOLDS = 10  # if None, set to leave-one-out CV
-N_REPEATS = 20
+N_REPEATS = 100
 RANDOMIZE_DATA = True
 if USE_TEST_DATA:
-    N_JOBS = None
+    N_JOBS = 5
 else:
     N_JOBS = 3
-N_ALPHAS = 20
+N_ALPHAS = 0
 DESCS = ["negative", "positive", "all"]
-GUARANTEED_ALPHAS = [0.1, 0.05, 0.01, 0.005, 0.001]
+GUARANTEED_ALPHAS = [0.05]
 
 
 class CPMMasker:
@@ -37,37 +37,82 @@ class CPMMasker:
     def __init__(self, x_, y_, corrs_=None):
         self.corrs = corrs_
         if self.corrs is None:
-            self.corrs = [stats.pearsonr(a, y_) for a in x_.transpose()]
+            y_corr = (y_ - y_.mean()) / np.linalg.norm(y_)
+            x_corr = (x_ - x_.mean(axis=0).reshape(1, -1)) / np.linalg.norm(x_, axis=0).reshape(1, -1)
+            x_corr = np.nan_to_num(x_corr)
+            self.corrs = x_corr.T @ y_corr
         self.x = x_
         self.y = y_
 
     def clone(self):
         return CPMMasker(self.x, self.y, self.corrs)
 
-    def get_x(self, threshold, mask_type, x_=None, weighted=False):
+    def critical_r(self, alpha):
+        dof = self.y.shape[0] - 2
+        critical_t = stats.t.ppf(1 - alpha/2, dof)
+        return critical_t / np.sqrt(dof + critical_t**2)
+
+    def get_mask_by_type(self, threshold, mask_type, as_digits=False):
+        if mask_type == "positive" or mask_type == "pos" or mask_type == "p":
+            return self.get_pos_mask(threshold, as_digits)
+        elif mask_type == "negative" or mask_type == "neg" or mask_type == "n":
+            return self.get_neg_mask(threshold, as_digits)
+        else:
+            return self.get_all_mask(threshold, as_digits)
+
+    def get_pos_mask(self, threshold=0.05, as_ones=False):
+        critical_r = self.critical_r(threshold)
+        if as_ones:
+            ret = np.ones(self.corrs.shape)
+            ret[self.corrs < critical_r] = 0
+        else:
+            ret = self.corrs > critical_r
+        return ret
+
+    def get_neg_mask(self, threshold=0.05, as_neg_ones=False):
+        critical_r = self.critical_r(threshold)
+        if as_neg_ones:
+            ret = -1 * np.ones(self.corrs.shape)
+            ret[self.corrs > -critical_r] = 0
+        else:
+            ret = self.corrs < -critical_r
+        return ret
+
+    def get_all_mask(self, threshold=0.05, as_digits=False):
+        critical_r = self.critical_r(threshold)
+        if as_digits:
+            ret = np.zeros(self.corrs.shape)
+            ret[self.corrs > critical_r] = 1
+            ret[self.corrs < -critical_r] = -1
+        else:
+            ret= np.absolute(self.corrs) > critical_r
+        return ret
+
+    def count_cpm_coefficients(self, threshold, mask_type):
+        mask = self.get_mask_by_type(threshold, mask_type)
+        return np.count_nonzero(mask)
+
+    def get_x(self, threshold, mask_type, x_=None):
 
         if x_ is None:
             x_ = self.x
 
+        if type(x_) is list:
+            x_ = np.ndarray(x_)
+
         if len(x_.shape) == 1:
             x_ = x_.reshape(-1, 1)
 
-        pos_mask = [c[1] < threshold and c[0] > 0 for c in self.corrs]
-        neg_mask = [c[1] < threshold and c[0] < 0 for c in self.corrs]
+        pos_mask = self.get_pos_mask(threshold, as_ones=False)
+        neg_mask = self.get_neg_mask(threshold, as_neg_ones=False)
 
         pos_masked = x_[:, pos_mask]
         neg_masked = x_[:, neg_mask]
         n_pos = pos_masked.shape[1]
         n_neg = neg_masked.shape[1]
 
-        if weighted:
-            pos_weights = [c[0] for c in self.corrs if c[1] < threshold and c[0] > 0]
-            neg_weights = [-c[0] for c in self.corrs if c[1] < threshold and c[0] < 0]
-            pos_masked = (pos_masked @ np.array(pos_weights)).reshape(-1, 1)
-            neg_masked = (neg_masked @ np.array(neg_weights)).reshape(-1, 1)
-        else:
-            pos_masked = pos_masked.sum(axis=1).reshape(-1, 1)
-            neg_masked = neg_masked.sum(axis=1).reshape(-1, 1)
+        pos_masked = pos_masked.sum(axis=1).reshape(-1, 1)
+        neg_masked = neg_masked.sum(axis=1).reshape(-1, 1)
 
         if mask_type == "positive":
             ret = pos_masked
@@ -89,36 +134,28 @@ def get_masker(fold_index, x_, y_, kf_):
 
 
 def run_one_cpm(alpha_, kf_, fold_masker_arr_, desc_, x_, y_, repeat_index_):
-    y_pred_unweighted = np.zeros(y_.shape)
-    y_pred_weighted = np.zeros(y_.shape)
+    y_pred = np.zeros(y_.shape)
     total_params = 0
     for j in range(len(kf_)):
         train_indices = kf_[j][0]
         test_indices = kf_[j][1]
 
         fold_masker = fold_masker_arr_[j]
-        train_x_masked_unweighted, n_params = fold_masker.get_x(alpha_, desc_, weighted=False)
-        train_x_masked_weighted, _ = fold_masker.get_x(alpha_, desc_, weighted=True)
+        train_x_masked, n_params = fold_masker.get_x(alpha_, desc_)
         train_y = y_[train_indices]
 
-        model_weighted = LinearRegression()
-        model_weighted.fit(train_x_masked_weighted, train_y)
-
-        model_unweighted = LinearRegression()
-        model_unweighted.fit(train_x_masked_unweighted, train_y)
+        model = LinearRegression()
+        model.fit(train_x_masked, train_y)
 
         test_x, n_params = fold_masker.get_x(alpha_, desc_, x_[test_indices])
-        y_pred_weighted[test_indices] = model_weighted.predict(test_x)
-        y_pred_unweighted[test_indices] = model_unweighted.predict(test_x)
+        y_pred[test_indices] = model.predict(test_x)
         total_params += n_params
 
     print(f"\t{desc_} alpha {alpha_:.6f} repeat {repeat_index_ + 1} finished")
     # noinspection PyTypeChecker
-    rho_weighted = stats.spearmanr(y_, y_pred_weighted)[0]
-    # noinspection PyTypeChecker
-    rho_unweighted = stats.spearmanr(y_, y_pred_unweighted)[0]
+    rho = stats.spearmanr(y_, y_pred)[0]
     avg_params = total_params / len(kf_)
-    return alpha_, rho_weighted, rho_unweighted, avg_params
+    return alpha_, rho, avg_params
 
 
 def print_efficiency(insights_, n_jobs_):
@@ -127,31 +164,14 @@ def print_efficiency(insights_, n_jobs_):
 
 def save_data(data_df_, folds_, repeats, desc_, source):
     ax = sns.lineplot(x="alpha",
-                      y="rho_weighted",
+                      y="rho",
                       data=data_df_,
-                      label="rho_weighted",
+                      label="rho",
                       color="blue")
-    # ax2 = ax.twinx()
-    # sns.lineplot(x="alpha",
-    # y="n_params",
-    # data=data_df_,
-    # ax=ax2,
-    # label="n_params",
-    # color="red")
-    # ax2.figure.legend(bbox_to_anchor=(0, 1))
-    sns.lineplot(x="alpha",
-                 y="rho_unweighted",
-                 data=data_df_,
-                 ax=ax,
-                 label="rho_unweighted",
-                 color="green")
     plt.legend()
     plt.title(source + " " + desc_)
 
     ax.set_xscale("log")
-    # ax2.set_xscale("log")
-    # ax.set_yscale("log")
-    # ax2.set_yscale("log")
 
     save_file_name = f"{source}_{desc_}_{folds_}fold_{repeats}_repeats.png"
 
@@ -177,7 +197,7 @@ def do_one_repeat(shared_objects_, repeat_idx_):
     for desc in descs:
         cpm_results = [run_one_cpm(alpha_, kf, fold_masker_arr, desc, x_, y_, repeat_idx_)
                        for alpha_ in alphas_]
-        cpm_df = pd.DataFrame(cpm_results, columns=["alpha", "rho_weighted", "rho_unweighted", "n_params"])
+        cpm_df = pd.DataFrame(cpm_results, columns=["alpha", "rho", "n_params"])
         data_dfs_[desc] = cpm_df
 
     print(f"Finished repeat {repeat_idx_ + 1}")
@@ -219,6 +239,12 @@ def do_search(x, y, folds, alphas, job_count, descriptor, save):
     return repeats_data
 
 
+def convert_to_wide(matrix_tensor):
+    num_nodes = matrix_tensor.shape[1]
+    utix = np.triu_indices(num_nodes, k=1)
+    return matrix_tensor[utix[0], utix[1], :].transpose()
+
+
 def main():
     print_recommended_thread_counts()
 
@@ -235,9 +261,7 @@ def main():
         num_peeps = x.shape[2]
         num_nodes = x.shape[1]
 
-        # x is symmetric - cut out the upper triangle
-        utix = np.triu_indices(num_nodes, k=1)
-        x = x[utix[0], utix[1], :].transpose()
+        x = convert_to_wide(x)
 
         job_count = N_JOBS if N_JOBS is not None else multiprocessing.cpu_count()
         folds = N_FOLDS if N_FOLDS is not None else num_peeps

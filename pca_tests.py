@@ -1,12 +1,12 @@
 import time
 
+import numpy as np
+import torch
+from mpire import WorkerPool
 from scipy.stats import spearmanr
 from sklearn.model_selection import KFold
 
 import data_loader
-import numpy as np
-from mpire import WorkerPool
-import torch
 
 PATIENCE = 3000
 NUM_REPETITIONS = 20
@@ -57,7 +57,7 @@ def gradient_descent(y_, x_, l1_constant):
             steps_since_improvement = steps_without_improvement + 1
             current_lips = (best_loss - loss.item()) / steps_since_improvement if best_loss is not np.inf else 0
             lips = current_lips * min(steps_since_improvement, lips_window) + \
-                last_lips * max(0, lips_window - steps_since_improvement)
+                   last_lips * max(0, lips_window - steps_since_improvement)
             lips /= lips_window
             last_lips = lips
 
@@ -79,7 +79,7 @@ def gradient_descent(y_, x_, l1_constant):
             print("l1 norm: {:6.2f}".format(best_l1_norm))
             print("small components: {}".format(np.count_nonzero(np.abs(best_proj_vectors) < 1e-4)))
             print("steps without improvement: {}".format(steps_without_improvement))
-            print("lips: {:6.4f} ({:6.2f}/{})".format(lips, lips*lips_window, lips_window))
+            print("lips: {:6.4f} ({:6.2f}/{})".format(lips, lips * lips_window, lips_window))
             now = time.time()
 
         loss.backward()
