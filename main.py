@@ -69,6 +69,19 @@ class CPMMasker:
             ret = self.corrs > critical_r
         return ret
 
+    def sort_key(self, i, mask_type):
+        corr = self.corrs[i]
+        if mask_type == "positive":
+            return corr
+        elif mask_type == "negative":
+            return -corr
+        else:
+            return abs(corr)
+
+    def get_coef_order(self, mask_type):
+        return sorted(range(self.corrs.shape[0]),
+                      key=lambda x: self.sort_key(x, mask_type), reverse=True)
+
     def get_neg_mask(self, threshold=0.05, as_neg_ones=False):
         critical_r = self.critical_r(threshold)
         if as_neg_ones:
@@ -85,7 +98,7 @@ class CPMMasker:
             ret[self.corrs > critical_r] = 1
             ret[self.corrs < -critical_r] = -1
         else:
-            ret= np.absolute(self.corrs) > critical_r
+            ret = np.absolute(self.corrs) > critical_r
         return ret
 
     def count_cpm_coefficients(self, threshold, mask_type):
