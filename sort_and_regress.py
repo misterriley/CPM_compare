@@ -86,7 +86,7 @@ def main():
                                           y_col_c=[#"kirby_c_estimated_k_all_trials_fu2",
                                                     #"csi_c_sum_fu2",
                                                     #"neo_c_neuroticism_average_fu2",
-                                                    "neo_c_extraversion_average_fu2",
+                                                    #"neo_c_extraversion_average_fu2",
                                                     "neo_c_openness_average_fu2",
                                                     "neo_c_agreeableness_average_fu2",
                                                     "neo_c_conscientiousness_average_fu2",
