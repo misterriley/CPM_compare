@@ -14,7 +14,7 @@ from sklearn.model_selection import KFold
 
 import data_loader
 
-USE_TEST_DATA = True
+USE_TEST_DATA = False
 
 DO_NESTED_KFOLD = False
 N_OUTER_FOLDS = 3
