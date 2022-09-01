@@ -82,18 +82,8 @@ def decrease_priority():
 
 def main():
     decrease_priority()
-    ds = data_loader.get_imagen_data_sets(file_c="mats_mid_bsl.mat",
-                                          y_col_c=[#"kirby_c_estimated_k_all_trials_fu2",
-                                                    #"csi_c_sum_fu2",
-                                                    #"neo_c_neuroticism_average_fu2",
-                                                    #"neo_c_extraversion_average_fu2",
-                                                    "neo_c_openness_average_fu2",
-                                                    "neo_c_agreeableness_average_fu2",
-                                                    "neo_c_conscientiousness_average_fu2",
-                                                    "surps_c_hopelessness_average_fu2",
-                                                    "surps_c_anxiety_sensitivity_average_fu2",
-                                                    "surps_c_impulsivity_average_fu2",
-                                                    "surps_c_sensation_seeking_average_fu2"],
+    ds = data_loader.get_imagen_data_sets(file_c=["mats_mid_fu2.mat", "mats_sst_bsl.mat", "mats_sst_fu2.mat"],
+                                          y_col_c=None,
                                           as_r=False,
                                           clean_data=True)
     for d in ds:
@@ -115,7 +105,7 @@ def main():
                                        out_df["best_dim"].mean(),
                                        mask_type]
 
-            out_df.to_csv("s_and_r_{}_{}.csv".format(d.get_descriptor(), mask_type), index=False)
+            out_df.to_csv("C:\\Users\\bleem\\Dropbox\\Yale\\Output Sync\\s_and_r_{}_{}.csv".format(d.get_descriptor(), mask_type), index=False)
             p(-1, "{} {} {}".format(d.get_descriptor(), np.mean(results[:, 0]), np.mean(results[:, 1])), 2)
 
 
