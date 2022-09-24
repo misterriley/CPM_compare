@@ -16,7 +16,7 @@ N_SPLITS = 10
 MAX_ENTRIES = 500
 NUM_CHECKS = 50
 VERBOSITY = 4
-N_JOBS = 7
+N_JOBS = 5
 
 
 def get_check_list(min_entries, max_entries, num_checks):
@@ -25,7 +25,7 @@ def get_check_list(min_entries, max_entries, num_checks):
     ret = np.ndarray(num_checks, dtype=int)
     ret[0] = last_entry = min_entries
     for i in range(1, num_checks):
-        next_entry = (max_entries/last_entry)**(1/(num_checks-i)) * last_entry
+        next_entry = (max_entries / last_entry) ** (1 / (num_checks - i)) * last_entry
         next_entry = int(round(next_entry))
         if next_entry == last_entry:
             next_entry += 1
@@ -73,16 +73,16 @@ def regress_on_best_entries(repeat_index, x_train, y_train, x_test, y_test, mask
 
     return ret
 
-def decrease_priority():
 
+def decrease_priority():
     pid = win32api.GetCurrentProcessId()
     handle = win32api.OpenProcess(win32con.PROCESS_ALL_ACCESS, True, pid)
-    win32process.SetPriorityClass(handle, win32process.THREAD_PRIORITY_LOWEST)
+    win32process.SetPriorityClass(handle, win32process.BELOW_NORMAL_PRIORITY_CLASS)
 
 
 def main():
     decrease_priority()
-    ds = data_loader.get_imagen_data_sets(file_c=["mats_mid_fu2.mat", "mats_sst_bsl.mat", "mats_sst_fu2.mat"],
+    ds = data_loader.get_imagen_data_sets(file_c=["mats_sst_fu2.mat"],
                                           y_col_c=None,
                                           as_r=False,
                                           clean_data=True)
@@ -105,7 +105,9 @@ def main():
                                        out_df["best_dim"].mean(),
                                        mask_type]
 
-            out_df.to_csv("C:\\Users\\bleem\\Dropbox\\Yale\\Output Sync\\s_and_r_{}_{}.csv".format(d.get_descriptor(), mask_type), index=False)
+            out_df.to_csv(
+                "C:\\Users\\bleem\\Dropbox\\Yale\\Output Sync\\s_and_r_{}_{}.csv".format(d.get_descriptor(), mask_type),
+                index=False)
             p(-1, "{} {} {}".format(d.get_descriptor(), np.mean(results[:, 0]), np.mean(results[:, 1])), 2)
 
 
