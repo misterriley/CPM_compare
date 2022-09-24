@@ -67,6 +67,25 @@ MAT_FILES_DICT = \
                         "surps_c_impulsivity_average_fu2",
                         "surps_c_sensation_seeking_average_fu2"
                     ]
+            },
+        "IMAGEN.sex":
+            {
+                "path": "G:\\.shortcut-targets-by-id\\1Nj5b1RhD0TcXoswrxiV5gkSPPq4fnGfu\\IMAGEN_master_data"
+                        "\\Matrices_Qinghao_new\\matrices",
+                "file":
+                    {
+                        "mats_mid_bsl.mat": {'x_col': 'mats_mid'},
+                        "mats_mid_fu2.mat": {'x_col': 'mats_mid'},
+                        "mats_sst_bsl.mat": {'x_col': 'mats_sst'},
+                        "mats_sst_fu2.mat": {'x_col': 'mats_sst'},
+                    },
+                "y_in_mat_file": False,
+                "y_file": "G:\\.shortcut-targets-by-id\\1Y42MQjJzdev5CtNSh2pJh51BAqOrZiVX\\IMAGEN\\behav_variables"
+                          "\\sex_export.csv",
+                "y_col":
+                    [
+                        "sex"
+                    ]
             }
     }
 
@@ -116,6 +135,11 @@ def get_imagen_data_sets(as_r, clean_data=True, file_c=None, y_col_c=None):
     return dl_.data_sets
 
 
+def get_imagen_sex_data_sets(as_r, clean_data=True, file_c=None):
+    dl_ = DataLoader(as_r, protocol_c="IMAGEN.sex", file_c = file_c, clean_data=clean_data)
+    return dl_.data_sets
+
+
 def get_test_data_sets(as_r, clean_data=True):
     dl_ = DataLoader(as_r, protocol_c="test_data", clean_data=clean_data)
     return dl_.data_sets
@@ -159,7 +183,10 @@ class DataLoader:
             assert x.shape[0] == x.shape[1]
 
             x_is_bad = [np.isnan(x[:, :, i]).any() for i in range(x.shape[2])]
-            y_is_bad = np.isnan(y)
+            try:
+                y_is_bad = np.isnan(y)
+            except TypeError:
+                y_is_bad = [y_ is None for y_ in y]
             good_indices = np.where(~np.logical_or(x_is_bad, y_is_bad))[0]
             data_set_.x = x[:, :, good_indices]
             data_set_.y = y[good_indices]
@@ -231,7 +258,7 @@ class DataLoader:
         x = mat[x_col_m]
         if y_in_mat_file_m:
             self.add_y_col_from_mat(y_col_m, x, mat)
-        elif y_file_m.endswith(".txt"):
+        elif y_file_m.endswith(".txt") or y_file_m.endswith(".csv"):
             y = load_txt(y_file_m, delimiter="\t")
             self.build_data_set(x, y)
         elif y_file_m.endswith(".xlsx"):
@@ -245,10 +272,4 @@ class DataLoader:
 
 if __name__ == "__main__":
 
-    dl = DataLoader(protocol_c=["IMAGEN"],
-                    file_c=["mats_sst_fu2.mat"],
-                    y_col_c=["surps_c_sensation_seeking_average_fu2"],
-                    as_r=True)
-    data_sets = dl.get_data_sets()
-    for data_set in data_sets:
-        print(data_set.get_descriptor())
+    pass

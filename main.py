@@ -13,6 +13,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import KFold
 
 import data_loader
+from cpm_masker import CPMMasker
 
 USE_TEST_DATA = False
 
@@ -30,114 +31,6 @@ else:
 N_ALPHAS = 0
 DESCS = ["negative", "positive", "all"]
 GUARANTEED_ALPHAS = [0.05]
-
-
-class CPMMasker:
-
-    def __init__(self, x_, y_, corrs_=None):
-        self.corrs = corrs_
-        if self.corrs is None:
-            y_corr = (y_ - y_.mean()) / np.linalg.norm(y_)
-            x_corr = (x_ - x_.mean(axis=0).reshape(1, -1)) / np.linalg.norm(x_, axis=0).reshape(1, -1)
-            x_corr = np.nan_to_num(x_corr)
-            self.corrs = x_corr.T @ y_corr
-        self.x = x_
-        self.y = y_
-
-    def clone(self):
-        return CPMMasker(self.x, self.y, self.corrs)
-
-    def critical_r(self, alpha):
-        dof = self.y.shape[0] - 2
-        critical_t = stats.t.ppf(1 - alpha/2, dof)
-        return critical_t / np.sqrt(dof + critical_t**2)
-
-    def get_mask_by_type(self, threshold, mask_type, as_digits=False):
-        if mask_type == "positive" or mask_type == "pos" or mask_type == "p":
-            return self.get_pos_mask(threshold, as_digits)
-        elif mask_type == "negative" or mask_type == "neg" or mask_type == "n":
-            return self.get_neg_mask(threshold, as_digits)
-        else:
-            return self.get_all_mask(threshold, as_digits)
-
-    def get_pos_mask(self, threshold=0.05, as_ones=False):
-        critical_r = self.critical_r(threshold)
-        if as_ones:
-            ret = np.ones(self.corrs.shape)
-            ret[self.corrs < critical_r] = 0
-        else:
-            ret = self.corrs > critical_r
-        return ret
-
-    def sort_key(self, i, mask_type):
-        corr = self.corrs[i]
-        if mask_type == "positive":
-            return corr
-        elif mask_type == "negative":
-            return -corr
-        else:
-            return abs(corr)
-
-    def get_coef_order(self, mask_type):
-        return sorted(range(self.corrs.shape[0]),
-                      key=lambda x: self.sort_key(x, mask_type), reverse=True)
-
-    def get_neg_mask(self, threshold=0.05, as_neg_ones=False):
-        critical_r = self.critical_r(threshold)
-        if as_neg_ones:
-            ret = -1 * np.ones(self.corrs.shape)
-            ret[self.corrs > -critical_r] = 0
-        else:
-            ret = self.corrs < -critical_r
-        return ret
-
-    def get_all_mask(self, threshold=0.05, as_digits=False):
-        critical_r = self.critical_r(threshold)
-        if as_digits:
-            ret = np.zeros(self.corrs.shape)
-            ret[self.corrs > critical_r] = 1
-            ret[self.corrs < -critical_r] = -1
-        else:
-            ret = np.absolute(self.corrs) > critical_r
-        return ret
-
-    def count_cpm_coefficients(self, threshold, mask_type):
-        mask = self.get_mask_by_type(threshold, mask_type)
-        return np.count_nonzero(mask)
-
-    def get_x(self, threshold, mask_type, x_=None):
-
-        if x_ is None:
-            x_ = self.x
-
-        if type(x_) is list:
-            x_ = np.ndarray(x_)
-
-        if len(x_.shape) == 1:
-            x_ = x_.reshape(-1, 1)
-
-        pos_mask = self.get_pos_mask(threshold, as_ones=False)
-        neg_mask = self.get_neg_mask(threshold, as_neg_ones=False)
-
-        pos_masked = x_[:, pos_mask]
-        neg_masked = x_[:, neg_mask]
-        n_pos = pos_masked.shape[1]
-        n_neg = neg_masked.shape[1]
-
-        pos_masked = pos_masked.sum(axis=1).reshape(-1, 1)
-        neg_masked = neg_masked.sum(axis=1).reshape(-1, 1)
-
-        if mask_type == "positive":
-            ret = pos_masked
-            n_params = n_pos
-        elif mask_type == "negative":
-            ret = neg_masked
-            n_params = n_neg
-        else:
-            ret = pos_masked - neg_masked
-            n_params = n_pos + n_neg
-
-        return ret, n_params
 
 
 def get_masker(fold_index, x_, y_, kf_):
