@@ -1,6 +1,7 @@
+import numpy
 import pandas as pd
 from scipy.stats import spearmanr
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.model_selection import KFold
 
 from main import CPMMasker
@@ -17,15 +18,15 @@ VERBOSITY = 4
 
 
 def main():
-    ds = data_loader.get_imagen_data_sets(file_c="mats_mid_bsl.mat",
-                                          # y_col_c="csi_c_sum_fu2",
-                                          as_r=False,
-                                          clean_data=True)
+    ds = data_loader.get_imagen_sex_data_sets(as_r=False, clean_data=True, file_c="mats_mid_bsl.mat")
     out_df = pd.DataFrame(columns=["descriptor", "mask_type", "spearman_rho"])
     for d in ds:
         p("Starting CPM for {}...".format(d.descriptor), 2, VERBOSITY)
         x = d.x
         y = d.y
+
+        if np.unique(y).size == 2:
+            y = np.array([1 if i == np.unique(y)[1] else 0 for i in y])
 
         x = convert_to_wide(x)
         for mask_type in ["all", "positive", "negative"]:
@@ -49,7 +50,14 @@ def get_cpm_spearman_average(x, y, mask_type, n_repeats=1):
             p("Fitting fold {}/{}...".format(split_index+1, N_FOLDS), 5, VERBOSITY)
             reg, masker = fit(x[train_index], y[train_index], mask_type)
             x_test, n_params = masker.get_x(CPM_THRESHOLD, mask_type, x[test_index])
-            y_hat[test_index] = reg.predict(x_test)
+            if isinstance(reg, LinearRegression):
+                y_hat[test_index] = reg.predict(x_test)
+            else:
+                y_hat[test_index] = reg.predict_proba(x_test)[:, 1]
+        if np.unique(y).size == 2:
+            ll = np.sum(np.log(y_hat[y == 1]) + np.log(1 - y_hat[y == 0]))
+            y_mean = np.mean(y)
+            ll_null = y.shape[0] * (y_mean * np.log(y_mean) + (1 - y_mean) * np.log(1 - y_mean))
         rhos[i] = spearmanr(y, y_hat)[0]
         p("Spearman rho: {}".format(rhos[i]), 4, VERBOSITY)
     ret = np.mean(rhos)
@@ -58,9 +66,12 @@ def get_cpm_spearman_average(x, y, mask_type, n_repeats=1):
 
 
 def fit(x, y, mask_type):
-    masker = CPMMasker(x, y)
+    binary = numpy.unique(y).size == 2
+    masker = CPMMasker(x, y, binary=binary)
     xs, n_vals = masker.get_x(CPM_THRESHOLD, mask_type)
-    return LinearRegression().fit(xs, y), masker
+    clf = LogisticRegression(penalty='none', class_weight='balanced') if binary else LinearRegression()
+    clf.fit(xs, y)
+    return clf, masker
 
 
 if __name__ == "__main__":

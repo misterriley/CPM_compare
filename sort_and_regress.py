@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import win32api
 import win32con
 import win32process
 from mpire import WorkerPool
@@ -73,15 +72,8 @@ def regress_on_best_entries(repeat_index, x_train, y_train, x_test, y_test, mask
 
     return ret
 
-def decrease_priority():
-
-    pid = win32api.GetCurrentProcessId()
-    handle = win32api.OpenProcess(win32con.PROCESS_ALL_ACCESS, True, pid)
-    win32process.SetPriorityClass(handle, win32process.THREAD_PRIORITY_LOWEST)
-
 
 def main():
-    decrease_priority()
     ds = data_loader.get_imagen_data_sets(file_c=["mats_mid_fu2.mat", "mats_sst_bsl.mat", "mats_sst_fu2.mat"],
                                           y_col_c=None,
                                           as_r=False,
