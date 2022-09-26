@@ -5,6 +5,7 @@ from scipy import stats
 class CPMMasker:
     def __init__(self, x_, y_, corrs_=None, ts_=None, binary=False):
 
+        self.mask_cache = {}
         self.corrs = corrs_
         self.ts = ts_
         self.dofs = None
@@ -24,7 +25,7 @@ class CPMMasker:
                     one_sds ** 2 / y_.sum() + zero_sds ** 2 / (y_.shape[0] - y_.sum()))
                 self.dofs = (one_sds ** 2 / y_.sum() + zero_sds ** 2 / (y_.shape[0] - y_.sum())) ** 2 / (
                         (one_sds ** 2 / y_.sum()) ** 2 / (y_.sum() - 1) + (
-                            zero_sds ** 2 / (y_.shape[0] - y_.sum())) ** 2 / (
+                        zero_sds ** 2 / (y_.shape[0] - y_.sum())) ** 2 / (
                                 (y_.shape[0] - y_.sum()) - 1))
         else:
             if self.corrs is None:
@@ -57,6 +58,10 @@ class CPMMasker:
             return self.get_all_mask(threshold, as_digits)
 
     def get_pos_mask(self, threshold=0.05, as_ones=False):
+        cache_key = (threshold, as_ones, "pos")
+        if cache_key in self.mask_cache:
+            return self.mask_cache[cache_key]
+
         if self.binary:
             critical_ts = self.critical_ts(threshold)
             if as_ones:
@@ -64,7 +69,6 @@ class CPMMasker:
                 ret[self.ts < critical_ts] = 0
             else:
                 ret = self.ts > critical_ts
-            return ret
         else:
             critical_rs = self.critical_rs(threshold)
             if as_ones:
@@ -72,7 +76,9 @@ class CPMMasker:
                 ret[self.corrs < critical_rs] = 0
             else:
                 ret = self.corrs > critical_rs
-            return ret
+
+        self.mask_cache[cache_key] = ret
+        return ret
 
     def sort_key(self, i, mask_type):
         if self.binary:
@@ -100,6 +106,10 @@ class CPMMasker:
                           key=lambda x: self.sort_key(x, mask_type), reverse=True)
 
     def get_neg_mask(self, threshold=0.05, as_neg_ones=False):
+        cache_key = (threshold, as_neg_ones, "neg")
+        if cache_key in self.mask_cache:
+            return self.mask_cache[cache_key]
+
         if self.binary:
             critical_ts = self.critical_ts(threshold)
             if as_neg_ones:
@@ -107,7 +117,6 @@ class CPMMasker:
                 ret[self.ts > -critical_ts] = 0
             else:
                 ret = self.ts < -critical_ts
-            return ret
         else:
             critical_rs = self.critical_rs(threshold)
             if as_neg_ones:
@@ -115,9 +124,15 @@ class CPMMasker:
                 ret[self.corrs > -critical_rs] = 0
             else:
                 ret = self.corrs < -critical_rs
-            return ret
+
+        self.mask_cache[cache_key] = ret
+        return ret
 
     def get_all_mask(self, threshold=0.05, as_digits=False):
+        cache_key = (threshold, as_digits, "all")
+        if cache_key in self.mask_cache:
+            return self.mask_cache[cache_key]
+
         if self.binary:
             critical_ts = self.critical_ts(threshold)
             if as_digits:
@@ -126,7 +141,6 @@ class CPMMasker:
                 ret[self.ts < -critical_ts] = -1
             else:
                 ret = np.absolute(self.ts) > critical_ts
-            return ret
         else:
             critical_rs = self.critical_rs(threshold)
             if as_digits:
@@ -135,7 +149,9 @@ class CPMMasker:
                 ret[self.corrs < -critical_rs] = -1
             else:
                 ret = np.absolute(self.corrs) > critical_rs
-            return ret
+
+        self.mask_cache[cache_key] = ret
+        return ret
 
     def count_cpm_coefficients(self, threshold, mask_type):
         mask = self.get_mask_by_type(threshold, mask_type)
