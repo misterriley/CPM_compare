@@ -39,6 +39,14 @@ MAT_FILES_DICT = \
                 "x_col": "stp_all",
                 "y_file": "G:\\My Drive\\CPM_test_data\\txnegop.txt"
             },
+        "Sadie-Marie-2":
+            {
+                "path": "G:\\.shortcut-targets-by-id\\1VceKqlzwX5n81Xpygh6y4feSmauwxjvc\\CPM ABCD Sadie-Marie Fall 2022",
+                "file": "sex_abcd_enback_2458_cpm_ready.mat",
+                "y_in_mat_file": True,
+                "x_col": "x",
+                "y_col": "y"
+            },
         "IMAGEN":
             {
                 "path": "G:\\.shortcut-targets-by-id\\1Nj5b1RhD0TcXoswrxiV5gkSPPq4fnGfu\\IMAGEN_master_data"
@@ -128,6 +136,11 @@ def load_mat(file):
         return sio.loadmat(file)
     except NotImplementedError:
         return mat73.loadmat(file)
+
+
+def get_sadie_marie_2_data_sets(as_r, clean_data=True):
+    dl_ = DataLoader(as_r, protocol_c="Sadie-Marie-2", clean_data=clean_data)
+    return dl_.get_data_sets()
 
 
 def get_imagen_data_sets(as_r, clean_data=True, file_c=None, y_col_c=None):

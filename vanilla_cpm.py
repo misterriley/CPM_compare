@@ -18,12 +18,8 @@ VERBOSITY = 10
 
 
 def main():
-    ds = data_loader.get_imagen_sex_data_sets(as_r=False,
-                                              file_c=["mats_mid_bsl.mat",
-                                                      "mats_mid_fu2.mat",
-                                                      "mats_sst_bsl.mat",
-                                                      "mats_sst_fu2.mat"])
-    out_df = pd.DataFrame(columns=["descriptor", "mask_type", "spearman_rho"])
+    ds = data_loader.get_sadie_marie_2_data_sets(as_r=False)
+    out_df = pd.DataFrame(columns=["descriptor", "mask_type", "pseudo_r2"])
     for d in ds:
         p(-1, "Starting CPM for {}...".format(d.descriptor), 2, verbosity=VERBOSITY)
         x = d.x
@@ -49,6 +45,7 @@ def get_cpm_spearman_average(x, y, mask_type, n_repeats=1):
         p(-1, "Calculating spearman rho repeat {}/{}...".format(i+1, n_repeats), 4, verbosity=VERBOSITY)
         kf = KFold(n_splits=N_FOLDS, shuffle=True)
         y_hat = np.ndarray(y.shape[0])
+        binary = False
         for split_index, (train_index, test_index) in enumerate(kf.split(x)):
             p(-1, "Fitting fold {}/{}...".format(split_index+1, N_FOLDS), 5, verbosity=VERBOSITY)
             reg, masker = fit(x[train_index], y[train_index], mask_type)
@@ -56,8 +53,9 @@ def get_cpm_spearman_average(x, y, mask_type, n_repeats=1):
             if isinstance(reg, LinearRegression):
                 y_hat[test_index] = reg.predict(x_test)
             else:
+                binary = True
                 y_hat[test_index] = reg.predict_proba(x_test)[:, 1]
-        if np.unique(y).size == 2:
+        if binary:
             d_ll = np.sum(np.log(y_hat[y == 1])) + np.sum(np.log(1 - y_hat[y == 0]))
             y_mean = np.mean(y)
             d_ll_null = y.shape[0] * (y_mean * np.log(y_mean) + (1 - y_mean) * np.log(1 - y_mean))
@@ -71,7 +69,7 @@ def get_cpm_spearman_average(x, y, mask_type, n_repeats=1):
 
 
 def fit(x, y, mask_type):
-    binary = numpy.unique(y).size == 2
+    binary = False # numpy.unique(y).size == 2
     masker = CPMMasker(x, y, binary=binary)
     xs, n_vals = masker.get_x(CPM_THRESHOLD, mask_type)
     clf = LogisticRegression(penalty='none', class_weight='balanced') if binary else LinearRegression()
